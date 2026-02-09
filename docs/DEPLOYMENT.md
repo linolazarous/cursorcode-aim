@@ -1,112 +1,109 @@
 # Deployment Guide
 
-## Production Environment Variables
+## Quick Deploy to Render
 
-### Backend (.env)
+### Backend Service (Web Service)
+1. Create new **Web Service** → Connect GitHub repo
+2. **Root Directory**: `backend`
+3. **Build Command**: `pip install -r requirements.txt`
+4. **Start Command**: `uvicorn server:app --host 0.0.0.0 --port $PORT`
+5. **Environment**: Python 3.11
+
+### Frontend Service (Static Site)
+1. Create new **Static Site** → Connect GitHub repo  
+2. **Root Directory**: `frontend`
+3. **Build Command**: `yarn install && yarn build`
+4. **Publish Directory**: `build`
+
+### Required Environment Variables (Backend)
 
 ```env
 # Database (MongoDB Atlas recommended)
-MONGO_URL=mongodb+srv://user:password@cluster.mongodb.net/
-DB_NAME=cursorcode_prod
+MONGO_URL=mongodb+srv://user:pass@cluster.mongodb.net/
+DB_NAME=cursorcode
 
-# CORS (your frontend domain)
-CORS_ORIGINS=https://cursorcode.ai,https://www.cursorcode.ai
+# CORS - Set to your frontend domain
+CORS_ORIGINS=https://your-frontend.onrender.com,https://cursorcode.ai
 
-# Security (generate strong secrets)
-JWT_SECRET_KEY=generate-256-bit-secret
-JWT_REFRESH_SECRET=generate-another-256-bit-secret
+# Security (generate with: openssl rand -hex 32)
+JWT_SECRET_KEY=your-256-bit-secret
+JWT_REFRESH_SECRET=your-256-bit-refresh-secret
 
-# xAI Grok API
-XAI_API_KEY=xai-your-production-key
+# xAI Grok API (from x.ai)
+XAI_API_KEY=xai-your-key
 DEFAULT_XAI_MODEL=grok-4-latest
 FAST_REASONING_MODEL=grok-4-1-fast-reasoning
 FAST_NON_REASONING_MODEL=grok-4-1-fast-non-reasoning
 
-# Stripe (production keys)
+# Stripe (from stripe.com/dashboard)
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_STANDARD_PRICE_ID=price_standard
-STRIPE_PRO_PRICE_ID=price_pro
-STRIPE_PREMIER_PRICE_ID=price_premier
-STRIPE_ULTRA_PRICE_ID=price_ultra
 
-# SendGrid
-SENDGRID_API_KEY=SG.production-key
+# SendGrid (from sendgrid.com)
+SENDGRID_API_KEY=SG...
 EMAIL_FROM=info@cursorcode.ai
 
-# Frontend URL
-FRONTEND_URL=https://cursorcode.ai
+# GitHub OAuth (from github.com/settings/developers)
+GITHUB_OAUTH_CLIENT_ID=your-client-id
+GITHUB_OAUTH_CLIENT_SECRET=your-client-secret
+
+# Frontend URL (your deployed frontend)
+FRONTEND_URL=https://your-frontend.onrender.com
 ```
 
-### Frontend (.env)
+### Required Environment Variables (Frontend)
+
 ```env
-REACT_APP_BACKEND_URL=https://api.cursorcode.ai
+REACT_APP_BACKEND_URL=https://your-backend.onrender.com
 ```
 
-## Render Deployment
+## GitHub OAuth Setup
 
-### Backend Service
-1. Create new Web Service
-2. Connect your GitHub repository
-3. Settings:
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn server:app --host 0.0.0.0 --port $PORT`
-   - **Environment**: Python 3.11
+1. Go to https://github.com/settings/developers
+2. Click **New OAuth App**
+3. Fill in:
+   - **Application name**: CursorCode AI
+   - **Homepage URL**: https://your-frontend.onrender.com
+   - **Authorization callback URL**: https://your-frontend.onrender.com/auth/github/callback
+4. Copy **Client ID** and generate **Client Secret**
+5. Add to Render environment variables
 
-### Frontend Service
-1. Create new Static Site
-2. Connect your GitHub repository
-3. Settings:
-   - **Build Command**: `cd frontend && yarn install && yarn build`
-   - **Publish Directory**: `frontend/build`
+## Stripe Webhook Setup
 
-## Docker Compose (Self-hosted)
+1. Go to Stripe Dashboard → Developers → Webhooks
+2. Add endpoint: `https://your-backend.onrender.com/api/subscriptions/webhook`
+3. Select events:
+   - `checkout.session.completed`
+   - `customer.subscription.created`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
+4. Copy **Signing secret** → Add as `STRIPE_WEBHOOK_SECRET`
 
-```yaml
-version: '3.8'
-services:
-  backend:
-    build: ./backend
-    ports:
-      - "8001:8001"
-    env_file:
-      - ./backend/.env
-    depends_on:
-      - mongodb
+## MongoDB Atlas Setup
 
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
+1. Create free cluster at mongodb.com/cloud/atlas
+2. Create database user
+3. Whitelist all IPs (0.0.0.0/0) or Render IPs
+4. Get connection string → Add as `MONGO_URL`
 
-  mongodb:
-    image: mongo:7
-    volumes:
-      - mongo_data:/data/db
-    ports:
-      - "27017:27017"
+## Troubleshooting
 
-volumes:
-  mongo_data:
-```
+### Backend won't start
+- Check `MONGO_URL` is correct and accessible
+- Ensure all required env vars are set
+- Check Render logs for specific errors
 
-## Stripe Setup
+### Frontend shows blank page
+- Verify `REACT_APP_BACKEND_URL` points to backend
+- Check browser console for errors
+- Ensure CORS_ORIGINS includes frontend URL
 
-1. Create products in Stripe Dashboard for each plan
-2. Get Price IDs and add to environment variables
-3. Configure webhook endpoint: `https://api.cursorcode.ai/api/subscriptions/webhook`
-4. Select events: `checkout.session.completed`, `customer.subscription.*`
+### GitHub OAuth fails
+- Verify callback URL matches exactly
+- Check GITHUB_OAUTH_CLIENT_ID and SECRET are set
+- Ensure FRONTEND_URL is correct
 
-## SSL/TLS
-
-- Render/Vercel/Netlify: Automatic SSL
-- Self-hosted: Use Let's Encrypt with certbot or Caddy
-
-## Monitoring
-
-Recommended services:
-- **Sentry**: Error tracking
-- **DataDog/New Relic**: APM
-- **MongoDB Atlas**: Database monitoring
+### Stripe checkout fails
+- Verify STRIPE_SECRET_KEY is correct
+- Check webhook endpoint is accessible
+- Ensure products are created (auto-created on first request)
