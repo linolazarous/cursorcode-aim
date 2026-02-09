@@ -642,15 +642,18 @@ async def refresh_token(refresh_token: str = Header(...)):
 # ==================== GITHUB OAUTH ROUTES ====================
 
 @api_router.get("/auth/github")
-async def github_login():
+async def github_login(redirect_uri: Optional[str] = None):
     """Initiate GitHub OAuth flow"""
     if not GITHUB_CLIENT_ID:
         raise HTTPException(status_code=500, detail="GitHub OAuth not configured")
     
+    # Use provided redirect_uri or fall back to FRONTEND_URL
+    callback_url = redirect_uri or f"{FRONTEND_URL}/auth/github/callback"
+    
     state = secrets.token_urlsafe(16)
     params = {
         "client_id": GITHUB_CLIENT_ID,
-        "redirect_uri": f"{FRONTEND_URL}/auth/github/callback",
+        "redirect_uri": callback_url,
         "scope": "user repo",
         "state": state
     }
@@ -1242,10 +1245,17 @@ async def get_admin_stats(user: User = Depends(get_admin_user)):
     total_generations = await db.credit_usage.count_documents({})
     total_deployments = await db.deployments.count_documents({})
     
-    plan_distribution = {}
+    # Use aggregation pipeline to avoid N+1 queries
+    pipeline = [
+        {"$group": {"_id": "$plan", "count": {"$sum": 1}}}
+    ]
+    plan_counts = await db.users.aggregate(pipeline).to_list(None)
+    plan_distribution = {item["_id"]: item["count"] for item in plan_counts if item["_id"]}
+    
+    # Fill in missing plans with 0
     for plan in SUBSCRIPTION_PLANS.keys():
-        count = await db.users.count_documents({"plan": plan})
-        plan_distribution[plan] = count
+        if plan not in plan_distribution:
+            plan_distribution[plan] = 0
     
     revenue = sum(
         SUBSCRIPTION_PLANS[plan].price * count 
