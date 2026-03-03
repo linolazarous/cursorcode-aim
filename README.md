@@ -146,5 +146,5 @@ yarn start
 
 Proprietary - 
 <div className="text-sm text-zinc-500">
-  © {new Date().getFullYear()} CursorCode AI. All rights reserved.
+  © 2026 CursorCode AI. All rights reserved.
 </div>
