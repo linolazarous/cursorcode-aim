@@ -1,23 +1,54 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
+    <!-- Core Meta -->
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="CursorCode AI Platform" />
+    <meta name="theme-color" content="#050505" />
+    <meta name="color-scheme" content="dark" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap"
-      rel="stylesheet"
+    <!-- SEO -->
+    <title>CursorCode AI — Build Anything. Automatically.</title>
+    <meta
+      name="description"
+      content="CursorCode AI replaces entire development teams with autonomous AI agents. Build, deploy, and scale automatically."
     />
+    <meta name="keywords" content="AI developer, autonomous agents, fullstack AI, code generation, software automation" />
+    <meta name="author" content="CursorCode AI" />
 
-    <title>CursorCode</title>
+    <!-- Open Graph -->
+    <meta property="og:title" content="CursorCode AI — Build Anything. Automatically." />
+    <meta
+      property="og:description"
+      content="Replace development teams with autonomous AI agents."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="%PUBLIC_URL%/logo.png" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CursorCode AI" />
+    <meta
+      name="twitter:description"
+      content="Build Anything. Automatically."
+    />
+    <meta name="twitter:image" content="%PUBLIC_URL%/logo.png" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" href="%PUBLIC_URL%/logo.png" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo.png" />
+
+    <!-- Manifest (optional PWA support) -->
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!-- Prevent Flash of Unstyled Dark Mode -->
+    <script>
+      document.documentElement.classList.add("dark");
+    </script>
   </head>
 
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+  <body style="background-color: #050505; color: #EDEDED;">
+    <noscript>You need to enable JavaScript to run CursorCode AI.</noscript>
     <div id="root"></div>
   </body>
 </html>
