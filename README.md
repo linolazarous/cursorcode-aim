@@ -144,4 +144,7 @@ yarn start
 
 ## License
 
-Proprietary - © 2025 CursorCode AI. All rights reserved.
+Proprietary - 
+<div className="text-sm text-zinc-500">
+  © {new Date().getFullYear()} CursorCode AI. All rights reserved.
+</div>
