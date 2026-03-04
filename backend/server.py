@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr
 from motor.motor_asyncio import AsyncIOMotorClient
 import stripe
 import uuid
+import asyncio
 
 # -------------------------------
 # CONFIG & INIT
@@ -20,7 +21,7 @@ logging.basicConfig(level=logging.INFO)
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "sk_test_yourkey")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "whsec_yoursecret")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URL", "mongodb://localhost:27017")  # Use Atlas URL in Render
 
 stripe.api_key = STRIPE_SECRET_KEY
 
@@ -261,7 +262,6 @@ async def analytics_dashboard():
         top_users = [{"email": u["email"], "points": u["leaderboard_points"]} async for u in top_users_cursor]
         plan_suggestions_cursor = users_collection.find({"plan_suggestion": {"$ne": None}}).limit(100)
         plan_suggestions = [{"email": u["email"], "suggested_plan": u["plan_suggestion"]} async for u in plan_suggestions_cursor]
-
         return {
             "active_users": active_users,
             "total_users": total_users,
