@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "../components/ui/button";
@@ -12,22 +12,13 @@ export default function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
-  const [status, setStatus] = useState("verifying"); // verifying, success, error
+
+  const [status, setStatus] = useState("verifying"); // "verifying", "success", "error"
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    const token = searchParams.get("token");
-    if (token) {
-      verifyEmail(token);
-    } else {
-      setStatus("error");
-      setMessage("Invalid verification link");
-    }
-  }, [searchParams]);
-
-  const verifyEmail = async (token) => {
+  const verifyEmail = useCallback(async (token) => {
     try {
-      const response = await api.get(`/auth/verify-email?token=${token}`);
+      await api.get(`/auth/verify-email?token=${token}`);
       setStatus("success");
       setMessage("Your email has been verified!");
       await refreshUser();
@@ -37,7 +28,17 @@ export default function VerifyEmailPage() {
       setStatus("error");
       setMessage(error.response?.data?.detail || "Verification failed");
     }
-  };
+  }, [refreshUser, navigate]);
+
+  useEffect(() => {
+    const token = searchParams.get("token");
+    if (token) {
+      verifyEmail(token);
+    } else {
+      setStatus("error");
+      setMessage("Invalid verification link");
+    }
+  }, [searchParams, verifyEmail]);
 
   return (
     <div className="min-h-screen bg-void noise-bg flex items-center justify-center p-8">
