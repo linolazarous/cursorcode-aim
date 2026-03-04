@@ -2,14 +2,13 @@
 
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, List
 from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
 from motor.motor_asyncio import AsyncIOMotorClient
 import stripe
 import uuid
-import asyncio
 
 # -------------------------------
 # CONFIG & INIT
@@ -25,10 +24,25 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
-client = AsyncIOMotorClient(MONGO_URI)
+# -------------------------------
+# MONGODB CLIENT WITH CONNECTION CHECK
+# -------------------------------
+
+client = AsyncIOMotorClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client["appdb"]
 users_collection = db["users"]
 webhook_events = db["webhook_events"]
+
+async def check_mongo_connection():
+    try:
+        await client.admin.command("ping")
+        logger.info("MongoDB connection successful ✅")
+    except Exception as e:
+        logger.error(f"MongoDB connection failed ❌: {e}")
+
+# -------------------------------
+# FASTAPI INIT
+# -------------------------------
 
 app = FastAPI()
 api_router = APIRouter()
@@ -91,7 +105,10 @@ async def deduct_credits(user_id: str, amount: int):
 
 async def reset_monthly_credits(user: User):
     credits = PLAN_CREDITS.get(user.plan, PLAN_CREDITS["starter"])
-    await users_collection.update_one({"_id": user.id}, {"$set": {"credits": credits, "last_credit_reset": datetime.utcnow()}})
+    await users_collection.update_one(
+        {"_id": user.id},
+        {"$set": {"credits": credits, "last_credit_reset": datetime.utcnow()}}
+    )
     await evaluate_plan_suggestion(user.id)
 
 # -------------------------------
@@ -167,7 +184,10 @@ async def create_checkout_session(plan: str, current_user: User = Depends(get_cu
 async def create_customer_portal(current_user: User = Depends(get_current_user)):
     if not current_user.stripe_customer_id:
         raise HTTPException(status_code=400, detail="No Stripe customer")
-    session = stripe.billing_portal.Session.create(customer=current_user.stripe_customer_id, return_url=f"{FRONTEND_URL}/dashboard")
+    session = stripe.billing_portal.Session.create(
+        customer=current_user.stripe_customer_id,
+        return_url=f"{FRONTEND_URL}/dashboard"
+    )
     return {"url": session.url}
 
 # -------------------------------
@@ -205,10 +225,15 @@ async def stripe_webhook(request: Request):
         subscription = stripe.Subscription.retrieve(sub_id)
         product = stripe.Product.retrieve(subscription["items"]["data"][0]["price"]["product"])
         plan_id = product.metadata.get("plan_id", "starter")
-        await users_collection.update_one({"stripe_customer_id": obj["customer"]},
-                                         {"$set": {"plan": plan_id, "credits": PLAN_CREDITS[plan_id],
-                                                   "stripe_subscription_id": sub_id,
-                                                   "subscription_status": subscription["status"]}})
+        await users_collection.update_one(
+            {"stripe_customer_id": obj["customer"]},
+            {"$set": {
+                "plan": plan_id,
+                "credits": PLAN_CREDITS[plan_id],
+                "stripe_subscription_id": sub_id,
+                "subscription_status": subscription["status"]
+            }}
+        )
         await evaluate_plan_suggestion(obj["customer"])
     elif event["type"] == "invoice.paid":
         user = await users_collection.find_one({"stripe_customer_id": obj["customer"]})
@@ -217,8 +242,10 @@ async def stripe_webhook(request: Request):
     elif event["type"] == "invoice.payment_failed":
         await users_collection.update_one({"stripe_customer_id": obj["customer"]}, {"$set": {"subscription_status": "past_due"}})
     elif event["type"] == "customer.subscription.deleted":
-        await users_collection.update_one({"stripe_customer_id": obj["customer"]},
-                                          {"$set": {"plan": "starter", "credits": PLAN_CREDITS["starter"], "subscription_status": "canceled"}})
+        await users_collection.update_one(
+            {"stripe_customer_id": obj["customer"]},
+            {"$set": {"plan": "starter", "credits": PLAN_CREDITS["starter"], "subscription_status": "canceled"}}
+        )
     return {"status": "success"}
 
 # -------------------------------
@@ -234,6 +261,7 @@ async def analytics_dashboard():
         top_users = [{"email": u["email"], "points": u["leaderboard_points"]} async for u in top_users_cursor]
         plan_suggestions_cursor = users_collection.find({"plan_suggestion": {"$ne": None}}).limit(100)
         plan_suggestions = [{"email": u["email"], "suggested_plan": u["plan_suggestion"]} async for u in plan_suggestions_cursor]
+
         return {
             "active_users": active_users,
             "total_users": total_users,
@@ -250,10 +278,16 @@ async def analytics_dashboard():
 
 @api_router.get("/admin/revenue")
 async def revenue_dashboard():
-    subscriptions = stripe.Subscription.list(limit=100)
-    total = sum(sub["items"]["data"][0]["price"]["unit_amount"] / 100
-                for sub in subscriptions.auto_paging_iter() if sub.status == "active")
-    return {"estimated_monthly_revenue": total}
+    try:
+        subscriptions = stripe.Subscription.list(limit=100)
+        total = sum(
+            sub["items"]["data"][0]["price"]["unit_amount"] / 100
+            for sub in subscriptions.auto_paging_iter() if sub.status == "active"
+        )
+        return {"estimated_monthly_revenue": total}
+    except Exception as e:
+        logger.error(f"Revenue error: {e}")
+        return {"estimated_monthly_revenue": 0, "error": str(e)}
 
 # -------------------------------
 # ROOT HEALTH CHECK
@@ -264,10 +298,22 @@ async def root():
     return {"status": "Platform Live ✅"}
 
 # -------------------------------
+# STARTUP EVENT
+# -------------------------------
+
+@app.on_event("startup")
+async def startup_event():
+    await check_mongo_connection()
+
+# -------------------------------
 # REGISTER ROUTER
 # -------------------------------
 
 app.include_router(api_router, prefix="/api")
+
+# -------------------------------
+# RUN SERVER
+# -------------------------------
 
 if __name__ == "__main__":
     import uvicorn
