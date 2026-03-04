@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
@@ -12,6 +12,27 @@ export default function GitHubCallbackPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [error, setError] = useState(null);
+
+  // Wrap callback in useCallback to prevent ESLint warning
+  const handleGitHubCallback = useCallback(
+    async (code) => {
+      try {
+        const response = await api.post(`/auth/github/callback?code=${code}`);
+        const { access_token, refresh_token, user } = response.data;
+
+        localStorage.setItem("access_token", access_token);
+        localStorage.setItem("refresh_token", refresh_token);
+
+        toast.success(`Welcome, ${user.name}!`);
+        navigate("/dashboard");
+        window.location.reload(); // Refresh to update auth state
+      } catch (error) {
+        console.error("GitHub callback error:", error);
+        setError(error.response?.data?.detail || "GitHub authentication failed");
+      }
+    },
+    [navigate]
+  );
 
   useEffect(() => {
     const code = searchParams.get("code");
@@ -27,24 +48,7 @@ export default function GitHubCallbackPage() {
     } else {
       setError("No authorization code received");
     }
-  }, [searchParams]);
-
-  const handleGitHubCallback = async (code) => {
-    try {
-      const response = await api.post(`/auth/github/callback?code=${code}`);
-      const { access_token, refresh_token, user } = response.data;
-
-      localStorage.setItem("access_token", access_token);
-      localStorage.setItem("refresh_token", refresh_token);
-
-      toast.success(`Welcome, ${user.name}!`);
-      navigate("/dashboard");
-      window.location.reload(); // Refresh to update auth state
-    } catch (error) {
-      console.error("GitHub callback error:", error);
-      setError(error.response?.data?.detail || "GitHub authentication failed");
-    }
-  };
+  }, [searchParams, handleGitHubCallback]);
 
   if (error) {
     return (
