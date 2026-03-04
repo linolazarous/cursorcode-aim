@@ -39,15 +39,13 @@ export default function LoginPage() {
     }
   };
 
-  const handleGitHubLogin = async () => {
+  // Updated GitHub OAuth handler
+  const handleGitHubLogin = () => {
     setGithubLoading(true);
-    try {
-      const response = await api.get("/auth/github");
-      window.location.href = response.data.url;
-    } catch (error) {
-      toast.error("Failed to connect to GitHub");
-      setGithubLoading(false);
-    }
+    // Redirect directly to backend OAuth route
+    // Replace YOUR_BACKEND_URL with your Render backend URL
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || "https://your-backend.onrender.com";
+    window.location.href = `${backendUrl}/auth/github`;
   };
 
   return (
@@ -175,11 +173,7 @@ export default function LoginPage() {
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
                   data-testid="toggle-password-visibility"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>
