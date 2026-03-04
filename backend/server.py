@@ -1,223 +1,212 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
-from pathlib import Path
-from typing import Dict
-from datetime import datetime, timezone, timedelta
-import bcrypt
-from jose import jwt, JWTError
 import stripe
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+import os
+from datetime import datetime, timedelta
+from fastapi import Request, HTTPException, Depends
+from pymongo import ReturnDocument
 
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
-# --------------------------------------------------
-# ENV + ROOT
-# --------------------------------------------------
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
+PLAN_CREDITS = {
+    "starter": 50,
+    "standard": 500,
+    "pro": 2000,
+    "premier": 10000,
+    "ultra": 50000
+}
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-
-
-# --------------------------------------------------
-# DATABASE
-# --------------------------------------------------
-
-MONGO_URL = os.environ.get("MONGO_URL")
-DB_NAME = os.environ.get("DB_NAME")
-
-if not MONGO_URL or not DB_NAME:
-    raise RuntimeError("MongoDB configuration missing in environment variables")
-
-client = AsyncIOMotorClient(MONGO_URL)
-db = client[DB_NAME]
-
-
-# --------------------------------------------------
-# SECURITY
-# --------------------------------------------------
-
-JWT_SECRET = os.environ.get("JWT_SECRET_KEY")
-JWT_REFRESH_SECRET = os.environ.get("JWT_REFRESH_SECRET")
-
-if not JWT_SECRET or not JWT_REFRESH_SECRET:
-    raise RuntimeError("JWT secrets must be set in production")
-
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = 24
-JWT_REFRESH_EXPIRATION_DAYS = 7
-
-security = HTTPBearer()
-
-
-# --------------------------------------------------
-# THIRD-PARTY CONFIG
-# --------------------------------------------------
-
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
-EMAIL_FROM = os.environ.get("EMAIL_FROM", "info@cursorcode.ai")
-
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-
-
-# --------------------------------------------------
-# FASTAPI APP
-# --------------------------------------------------
-
-app = FastAPI(title="CursorCode AI API", version="1.0.0")
-api_router = APIRouter(prefix="/api")
-
-
-# --------------------------------------------------
-# CORS
-# --------------------------------------------------
-
-origins = os.environ.get("CORS_ORIGINS")
-
-if origins:
-    allow_origins = origins.split(",")
-else:
-    logger.warning("CORS_ORIGINS not set — defaulting to localhost only")
-    allow_origins = ["http://localhost:3000"]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=allow_origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# --------------------------------------------------
-# AUTH HELPERS
-# --------------------------------------------------
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
-
-
-def create_access_token(data: Dict) -> str:
-    payload = data.copy()
-    payload.update({
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS),
-        "type": "access"
-    })
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def create_refresh_token(data: Dict) -> str:
-    payload = data.copy()
-    payload.update({
-        "exp": datetime.now(timezone.utc) + timedelta(days=JWT_REFRESH_EXPIRATION_DAYS),
-        "type": "refresh"
-    })
-    return jwt.encode(payload, JWT_REFRESH_SECRET, algorithm=JWT_ALGORITHM)
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+@api_router.post("/subscriptions/create-checkout")
+async def create_checkout_session(
+    plan: str,
+    current_user: User = Depends(get_current_user)
 ):
+    prices = stripe.Price.list(
+        active=True,
+        type="recurring",
+        expand=["data.product"]
+    )
+
+    selected_price = None
+
+    for price in prices.auto_paging_iter():
+        metadata_plan = price.product.metadata.get("plan_id")
+        if metadata_plan == plan:
+            selected_price = price
+            break
+
+    if not selected_price:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    checkout_session = stripe.checkout.Session.create(
+        customer_email=current_user.email,
+        payment_method_types=["card"],
+        line_items=[{
+            "price": selected_price.id,
+            "quantity": 1,
+        }],
+        mode="subscription",
+        success_url=f"{FRONTEND_URL}/dashboard?success=true",
+        cancel_url=f"{FRONTEND_URL}/pricing?canceled=true",
+    )
+
+    return {"url": checkout_session.url}
+
+@api_router.post("/subscriptions/portal")
+async def create_customer_portal(current_user: User = Depends(get_current_user)):
+    if not current_user.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer")
+
+    session = stripe.billing_portal.Session.create(
+        customer=current_user.stripe_customer_id,
+        return_url=f"{FRONTEND_URL}/dashboard",
+    )
+
+    return {"url": session.url}
+
+async def deduct_credits(user_id: str, amount: int):
+    user = await users_collection.find_one({"_id": user_id})
+
+    if user["credits"] < amount:
+        raise HTTPException(status_code=403, detail="Not enough credits")
+
+    await users_collection.update_one(
+        {"_id": user_id},
+        {"$inc": {"credits": -amount}}
+    )
+
+async def reset_monthly_credits(user):
+    plan = user.get("plan", "starter")
+    new_credits = PLAN_CREDITS.get(plan, 50)
+
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"credits": new_credits}}
+    )
+
+@api_router.post("/subscriptions/update-seats")
+async def update_seats(quantity: int, current_user: User = Depends(get_current_user)):
+    stripe.Subscription.modify(
+        current_user.stripe_subscription_id,
+        items=[{
+            "id": current_user.stripe_item_id,
+            "quantity": quantity,
+        }]
+    )
+
+    return {"message": "Seats updated"}
+
+@api_router.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
     try:
-        payload = jwt.decode(
-            credentials.credentials,
-            JWT_SECRET,
-            algorithms=[JWT_ALGORITHM]
+        event = stripe.Webhook.construct_event(
+            payload,
+            sig_header,
+            STRIPE_WEBHOOK_SECRET
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid webhook")
+
+    event_type = event["type"]
+
+    # -----------------------------
+    # CHECKOUT COMPLETED
+    # -----------------------------
+    if event_type == "checkout.session.completed":
+        session = event["data"]["object"]
+
+        if session["mode"] == "subscription":
+            subscription_id = session["subscription"]
+            customer_email = session["customer_email"]
+
+            subscription = stripe.Subscription.retrieve(subscription_id)
+            price = subscription["items"]["data"][0]["price"]
+            product = stripe.Product.retrieve(price["product"])
+
+            plan_id = product.metadata.get("plan_id")
+
+            await users_collection.update_one(
+                {"email": customer_email},
+                {
+                    "$set": {
+                        "plan": plan_id,
+                        "credits": PLAN_CREDITS.get(plan_id, 50),
+                        "stripe_subscription_id": subscription_id,
+                        "stripe_customer_id": session["customer"],
+                        "subscription_status": subscription["status"]
+                    }
+                }
+            )
+
+    # -----------------------------
+    # INVOICE PAID (Monthly Reset)
+    # -----------------------------
+    elif event_type == "invoice.paid":
+        invoice = event["data"]["object"]
+        customer_id = invoice["customer"]
+
+        user = await users_collection.find_one(
+            {"stripe_customer_id": customer_id}
         )
 
-        user_id = payload.get("sub")
+        if user:
+            await reset_monthly_credits(user)
 
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
+    # -----------------------------
+    # PAYMENT FAILED
+    # -----------------------------
+    elif event_type == "invoice.payment_failed":
+        invoice = event["data"]["object"]
 
-        user_doc = await db.users.find_one({"id": user_id}, {"_id": 0})
-
-        if not user_doc:
-            raise HTTPException(status_code=401, detail="User not found")
-
-        return user_doc
-
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-
-# --------------------------------------------------
-# EMAIL
-# --------------------------------------------------
-
-async def send_email(to_email: str, subject: str, html_content: str):
-    if not SENDGRID_API_KEY:
-        logger.warning("SendGrid not configured — skipping email")
-        return False
-
-    try:
-        message = Mail(
-            from_email=EMAIL_FROM,
-            to_emails=to_email,
-            subject=subject,
-            html_content=html_content
+        await users_collection.update_one(
+            {"stripe_customer_id": invoice["customer"]},
+            {"$set": {"subscription_status": "past_due"}}
         )
 
-        SendGridAPIClient(SENDGRID_API_KEY).send(message)
-        return True
+    # -----------------------------
+    # SUB CANCELLED
+    # -----------------------------
+    elif event_type == "customer.subscription.deleted":
+        subscription = event["data"]["object"]
 
-    except Exception as e:
-        logger.error(f"Email failed: {e}")
-        return False
+        await users_collection.update_one(
+            {"stripe_customer_id": subscription["customer"]},
+            {
+                "$set": {
+                    "plan": "starter",
+                    "subscription_status": "canceled",
+                    "credits": PLAN_CREDITS["starter"]
+                }
+            }
+        )
 
+    return {"status": "success"}
 
-# --------------------------------------------------
-# HEALTH
-# --------------------------------------------------
+def require_plan(required_plan: str):
+    async def dependency(current_user: User = Depends(get_current_user)):
+        user_plan = current_user.plan
 
-@api_router.get("/")
-async def root():
-    return {"message": "CursorCode AI API", "version": "1.0.0"}
+        plan_levels = ["starter", "standard", "pro", "premier", "ultra"]
 
+        if plan_levels.index(user_plan) < plan_levels.index(required_plan):
+            raise HTTPException(status_code=403, detail="Upgrade required")
 
-@api_router.get("/health")
-async def health():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
+        return current_user
 
+    return dependency
 
-# --------------------------------------------------
-# LIFECYCLE
-# --------------------------------------------------
+@api_router.get("/admin/revenue")
+async def revenue_dashboard():
+    subscriptions = stripe.Subscription.list(limit=100)
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("✅ CursorCode backend starting...")
+    total = 0
+    for sub in subscriptions.auto_paging_iter():
+        if sub.status == "active":
+            total += sub["items"]["data"][0]["price"]["unit_amount"] / 100
 
-    if stripe.api_key:
-        logger.info("Stripe detected — billing enabled")
-    else:
-        logger.warning("Stripe not configured — running in demo billing mode")
+    return {"monthly_revenue_estimate": total}
 
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
-    logger.info("MongoDB connection closed")
-
-
-app.include_router(api_router)
