@@ -5,7 +5,6 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../context/AuthContext";
-import api from "../lib/api";
 import { toast } from "sonner";
 import { ArrowLeft, Eye, EyeOff, Loader2, CheckCircle2, Github } from "lucide-react";
 import Logo from "../components/Logo";
@@ -54,15 +53,11 @@ export default function SignupPage() {
     }
   };
 
-  const handleGitHubSignup = async () => {
+  // ✅ Updated GitHub signup redirect
+  const handleGitHubSignup = () => {
     setGithubLoading(true);
-    try {
-      const response = await api.get("/auth/github");
-      window.location.href = response.data.url;
-    } catch (error) {
-      toast.error("Failed to connect to GitHub");
-      setGithubLoading(false);
-    }
+    const backendUrl = process.env.REACT_APP_BACKEND_URL; // Vercel env variable
+    window.location.href = `${backendUrl}/auth/github`;
   };
 
   return (
@@ -112,7 +107,6 @@ export default function SignupPage() {
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-md"
         >
-          {/* Mobile Logo */}
           <Link to="/" className="flex lg:hidden mb-8">
             <Logo size="default" />
           </Link>
@@ -120,7 +114,6 @@ export default function SignupPage() {
           <Link
             to="/"
             className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-white transition-colors mb-8"
-            data-testid="back-to-home-link"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to home
@@ -140,7 +133,6 @@ export default function SignupPage() {
             disabled={githubLoading}
             variant="outline"
             className="w-full h-12 border-white/10 text-white hover:bg-white/5 mb-6"
-            data-testid="github-signup-btn"
           >
             {githubLoading ? (
               <Loader2 className="w-5 h-5 mr-2 animate-spin" />
@@ -161,9 +153,7 @@ export default function SignupPage() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="name" className="text-white">
-                Full Name
-              </Label>
+              <Label htmlFor="name" className="text-white">Full Name</Label>
               <Input
                 id="name"
                 type="text"
@@ -171,14 +161,11 @@ export default function SignupPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="bg-void-subtle border-white/10 text-white placeholder:text-zinc-500 h-12 focus:border-electric focus:ring-1 focus:ring-electric"
-                data-testid="signup-name-input"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-white">
-                Email
-              </Label>
+              <Label htmlFor="email" className="text-white">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -186,14 +173,11 @@ export default function SignupPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="bg-void-subtle border-white/10 text-white placeholder:text-zinc-500 h-12 focus:border-electric focus:ring-1 focus:ring-electric"
-                data-testid="signup-email-input"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-white">
-                Password
-              </Label>
+              <Label htmlFor="password" className="text-white">Password</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -202,23 +186,16 @@ export default function SignupPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="bg-void-subtle border-white/10 text-white placeholder:text-zinc-500 h-12 pr-12 focus:border-electric focus:ring-1 focus:ring-electric"
-                  data-testid="signup-password-input"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
-                  data-testid="toggle-password-visibility"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
 
-              {/* Password strength indicator */}
               {password && (
                 <div className="mt-2">
                   <div className="flex gap-1">
@@ -227,9 +204,7 @@ export default function SignupPage() {
                         key={level}
                         className={`h-1 flex-1 rounded-full transition-colors ${
                           passwordStrength() >= level
-                            ? level <= 2
-                              ? "bg-yellow-500"
-                              : "bg-emerald"
+                            ? level <= 2 ? "bg-yellow-500" : "bg-emerald"
                             : "bg-white/10"
                         }`}
                       />
@@ -249,7 +224,6 @@ export default function SignupPage() {
               type="submit"
               disabled={loading}
               className="w-full h-12 bg-electric hover:bg-electric/90 text-white shadow-glow"
-              data-testid="signup-submit-btn"
             >
               {loading ? (
                 <>
@@ -264,24 +238,14 @@ export default function SignupPage() {
 
           <p className="text-center text-zinc-400 mt-8">
             Already have an account?{" "}
-            <Link
-              to="/login"
-              className="text-electric hover:underline"
-              data-testid="login-link"
-            >
-              Sign in
-            </Link>
+            <Link to="/login" className="text-electric hover:underline">Sign in</Link>
           </p>
 
           <p className="text-center text-xs text-zinc-500 mt-4">
             By signing up, you agree to our{" "}
-            <a href="#" className="text-zinc-400 hover:text-white">
-              Terms of Service
-            </a>{" "}
+            <a href="#" className="text-zinc-400 hover:text-white">Terms of Service</a>{" "}
             and{" "}
-            <a href="#" className="text-zinc-400 hover:text-white">
-              Privacy Policy
-            </a>
+            <a href="#" className="text-zinc-400 hover:text-white">Privacy Policy</a>
           </p>
         </motion.div>
       </div>
