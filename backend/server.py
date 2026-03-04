@@ -87,14 +87,11 @@ async def deduct_credits(user_id: str, amount: int):
         {"_id": user_id},
         {"$inc": {"credits": -amount, "leaderboard_points": amount}, "$set": {"badges": badges}}
     )
-
-    # Check AI upgrade suggestion
     await evaluate_plan_suggestion(user_id)
 
 async def reset_monthly_credits(user: User):
     credits = PLAN_CREDITS.get(user.plan, PLAN_CREDITS["starter"])
     await users_collection.update_one({"_id": user.id}, {"$set": {"credits": credits, "last_credit_reset": datetime.utcnow()}})
-    # Evaluate AI suggestion monthly
     await evaluate_plan_suggestion(user.id)
 
 # -------------------------------
@@ -112,11 +109,8 @@ async def evaluate_plan_suggestion(user_id: str):
     used_ratio = used / max_credits if max_credits > 0 else 0
 
     suggestion = None
-
-    # Suggest upgrade if >80% used
     if used_ratio > 0.8 and PLAN_ORDER.index(plan) < len(PLAN_ORDER) - 1:
         suggestion = PLAN_ORDER[PLAN_ORDER.index(plan) + 1]
-    # Suggest downgrade if <20% used and not starter
     elif used_ratio < 0.2 and PLAN_ORDER.index(plan) > 0:
         suggestion = PLAN_ORDER[PLAN_ORDER.index(plan) - 1]
 
@@ -206,7 +200,6 @@ async def stripe_webhook(request: Request):
     await webhook_events.insert_one({"event_id": event["id"], "created_at": datetime.utcnow()})
     obj = event["data"]["object"]
 
-    # Checkout completed
     if event["type"] == "checkout.session.completed" and obj.get("subscription"):
         sub_id = obj["subscription"]
         subscription = stripe.Subscription.retrieve(sub_id)
@@ -217,38 +210,39 @@ async def stripe_webhook(request: Request):
                                                    "stripe_subscription_id": sub_id,
                                                    "subscription_status": subscription["status"]}})
         await evaluate_plan_suggestion(obj["customer"])
-
-    # Monthly reset
     elif event["type"] == "invoice.paid":
         user = await users_collection.find_one({"stripe_customer_id": obj["customer"]})
         if user:
             await reset_monthly_credits(User(**user))
-
-    # Payment failed
     elif event["type"] == "invoice.payment_failed":
         await users_collection.update_one({"stripe_customer_id": obj["customer"]}, {"$set": {"subscription_status": "past_due"}})
-
-    # Subscription deleted
     elif event["type"] == "customer.subscription.deleted":
         await users_collection.update_one({"stripe_customer_id": obj["customer"]},
                                           {"$set": {"plan": "starter", "credits": PLAN_CREDITS["starter"], "subscription_status": "canceled"}})
     return {"status": "success"}
 
 # -------------------------------
-# REAL-TIME ANALYTICS
+# ANALYTICS DASHBOARD
 # -------------------------------
 
 @api_router.get("/admin/analytics")
 async def analytics_dashboard():
-    active_users = await users_collection.count_documents({"stripe_subscription_id": {"$ne": None}})
-    top_users = await users_collection.find().sort("leaderboard_points", -1).to_list(length=10)
-    plan_suggestions = await users_collection.find({"plan_suggestion": {"$ne": None}}).to_list(length=100)
-    return {
-        "active_users": active_users,
-        "total_users": await users_collection.count_documents({}),
-        "top_users": [{"email": u["email"], "points": u["leaderboard_points"]} for u in top_users],
-        "plan_suggestions": [{"email": u["email"], "suggested_plan": u["plan_suggestion"]} for u in plan_suggestions]
-    }
+    try:
+        active_users = await users_collection.count_documents({"stripe_subscription_id": {"$ne": None}})
+        total_users = await users_collection.count_documents({})
+        top_users_cursor = users_collection.find().sort("leaderboard_points", -1).limit(10)
+        top_users = [{"email": u["email"], "points": u["leaderboard_points"]} async for u in top_users_cursor]
+        plan_suggestions_cursor = users_collection.find({"plan_suggestion": {"$ne": None}}).limit(100)
+        plan_suggestions = [{"email": u["email"], "suggested_plan": u["plan_suggestion"]} async for u in plan_suggestions_cursor]
+        return {
+            "active_users": active_users,
+            "total_users": total_users,
+            "top_users": top_users,
+            "plan_suggestions": plan_suggestions
+        }
+    except Exception as e:
+        logger.error(f"Analytics error: {e}")
+        return {"active_users": 0, "total_users": 0, "top_users": [], "plan_suggestions": [], "error": str(e)}
 
 # -------------------------------
 # ADMIN REVENUE
@@ -260,6 +254,14 @@ async def revenue_dashboard():
     total = sum(sub["items"]["data"][0]["price"]["unit_amount"] / 100
                 for sub in subscriptions.auto_paging_iter() if sub.status == "active")
     return {"estimated_monthly_revenue": total}
+
+# -------------------------------
+# ROOT HEALTH CHECK
+# -------------------------------
+
+@app.get("/")
+async def root():
+    return {"status": "Platform Live ✅"}
 
 # -------------------------------
 # REGISTER ROUTER
