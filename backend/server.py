@@ -1,320 +1,382 @@
-# backend/server.py
-
 import os
-import logging
-from datetime import datetime
-from typing import Optional, List
-from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends
-from pydantic import BaseModel, EmailStr
-from motor.motor_asyncio import AsyncIOMotorClient
+import jwt
+import time
+import requests
 import stripe
-import uuid
-import asyncio
+from datetime import datetime, timedelta
+from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from passlib.context import CryptContext
+from pymongo import MongoClient
+from dotenv import load_dotenv
+from openai import OpenAI
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
-# -------------------------------
-# CONFIG & INIT
-# -------------------------------
+load_dotenv()
 
-logger = logging.getLogger("billing")
-logging.basicConfig(level=logging.INFO)
+# =====================================================
+# ENV VARIABLES
+# =====================================================
 
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "sk_test_yourkey")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "whsec_yoursecret")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-MONGO_URI = os.getenv("MONGO_URL", "mongodb://localhost:27017")  # Use Atlas URL in Render
+MONGO_URL = os.getenv("MONGO_URL")
+DB_NAME = os.getenv("DB_NAME")
+
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET")
+
+FRONTEND_URL = os.getenv("FRONTEND_URL")
+
+GITHUB_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+
+XAI_API_KEY = os.getenv("XAI_API_KEY")
+DEFAULT_MODEL = os.getenv("DEFAULT_XAI_MODEL")
+
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+EMAIL_FROM = os.getenv("EMAIL_FROM")
+
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
-# -------------------------------
-# MONGODB CLIENT WITH CONNECTION CHECK
-# -------------------------------
+# =====================================================
+# DATABASE
+# =====================================================
 
-client = AsyncIOMotorClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-db = client["appdb"]
+client = MongoClient(MONGO_URL)
+db = client[DB_NAME]
+
 users_collection = db["users"]
-webhook_events = db["webhook_events"]
 
-async def check_mongo_connection():
-    try:
-        await client.admin.command("ping")
-        logger.info("MongoDB connection successful ✅")
-    except Exception as e:
-        logger.error(f"MongoDB connection failed ❌: {e}")
+# =====================================================
+# AI CLIENT
+# =====================================================
 
-# -------------------------------
-# FASTAPI INIT
-# -------------------------------
+ai_client = OpenAI(
+    api_key=XAI_API_KEY,
+    base_url="https://api.x.ai/v1",
+)
+
+# =====================================================
+# PASSWORD HASHING
+# =====================================================
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# =====================================================
+# FASTAPI APP
+# =====================================================
 
 app = FastAPI()
-api_router = APIRouter()
 
-PLAN_CREDITS = {"starter": 50, "standard": 500, "pro": 2000, "premier": 10000, "ultra": 50000}
-PLAN_ORDER = ["starter", "standard", "pro", "premier", "ultra"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# -------------------------------
-# USER MODEL
-# -------------------------------
+# =====================================================
+# UTILS
+# =====================================================
 
-class User(BaseModel):
-    id: str
-    email: EmailStr
-    plan: str = "starter"
-    credits: int = 0
-    stripe_customer_id: Optional[str] = None
-    stripe_subscription_id: Optional[str] = None
-    badges: List[str] = []
-    leaderboard_points: int = 0
-    last_credit_reset: Optional[datetime] = None
-    plan_suggestion: Optional[str] = None
+def hash_password(password):
+    return pwd_context.hash(password)
 
-async def get_current_user() -> User:
-    test_email = "user@example.com"
-    user_data = await users_collection.find_one({"email": test_email})
-    if not user_data:
-        user_data = {
-            "_id": str(uuid.uuid4()),
-            "email": test_email,
-            "plan": "starter",
-            "credits": PLAN_CREDITS["starter"],
-            "badges": [],
-            "leaderboard_points": 0,
-            "last_credit_reset": datetime.utcnow(),
-            "plan_suggestion": None
-        }
-        await users_collection.insert_one(user_data)
-    return User(**user_data)
+def verify_password(password, hashed):
+    return pwd_context.verify(password, hashed)
 
-# -------------------------------
-# CREDIT MANAGEMENT
-# -------------------------------
+def create_access_token(data):
+    payload = data.copy()
+    payload["exp"] = datetime.utcnow() + timedelta(hours=2)
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
 
-async def deduct_credits(user_id: str, amount: int):
-    user = await users_collection.find_one({"_id": user_id})
-    if not user or user.get("credits", 0) < amount:
-        raise HTTPException(status_code=403, detail="Insufficient credits")
+def create_refresh_token(data):
+    payload = data.copy()
+    payload["exp"] = datetime.utcnow() + timedelta(days=30)
+    return jwt.encode(payload, JWT_REFRESH_SECRET, algorithm="HS256")
 
-    new_points = user.get("leaderboard_points", 0) + amount
-    badges = user.get("badges", [])
-    if new_points > 1000 and "Power User" not in badges:
-        badges.append("Power User")
-
-    await users_collection.update_one(
-        {"_id": user_id},
-        {"$inc": {"credits": -amount, "leaderboard_points": amount}, "$set": {"badges": badges}}
-    )
-    await evaluate_plan_suggestion(user_id)
-
-async def reset_monthly_credits(user: User):
-    credits = PLAN_CREDITS.get(user.plan, PLAN_CREDITS["starter"])
-    await users_collection.update_one(
-        {"_id": user.id},
-        {"$set": {"credits": credits, "last_credit_reset": datetime.utcnow()}}
-    )
-    await evaluate_plan_suggestion(user.id)
-
-# -------------------------------
-# AI PLAN SUGGESTIONS
-# -------------------------------
-
-async def evaluate_plan_suggestion(user_id: str):
-    user = await users_collection.find_one({"_id": user_id})
-    if not user:
+def send_email(to_email, subject, content):
+    if not SENDGRID_API_KEY:
         return
 
-    plan = user.get("plan", "starter")
-    max_credits = PLAN_CREDITS.get(plan, 50)
-    used = max_credits - user.get("credits", 0)
-    used_ratio = used / max_credits if max_credits > 0 else 0
-
-    suggestion = None
-    if used_ratio > 0.8 and PLAN_ORDER.index(plan) < len(PLAN_ORDER) - 1:
-        suggestion = PLAN_ORDER[PLAN_ORDER.index(plan) + 1]
-    elif used_ratio < 0.2 and PLAN_ORDER.index(plan) > 0:
-        suggestion = PLAN_ORDER[PLAN_ORDER.index(plan) - 1]
-
-    await users_collection.update_one({"_id": user_id}, {"$set": {"plan_suggestion": suggestion}})
-
-# -------------------------------
-# PLAN ENFORCEMENT
-# -------------------------------
-
-def require_plan(required_plan: str):
-    async def dependency(current_user: User = Depends(get_current_user)):
-        if required_plan not in PLAN_ORDER:
-            raise HTTPException(status_code=400, detail="Invalid plan")
-        if PLAN_ORDER.index(current_user.plan) < PLAN_ORDER.index(required_plan):
-            raise HTTPException(status_code=403, detail="Upgrade required")
-        return current_user
-    return dependency
-
-# -------------------------------
-# STRIPE CHECKOUT SESSION
-# -------------------------------
-
-@api_router.post("/subscriptions/create-checkout")
-async def create_checkout_session(plan: str, current_user: User = Depends(get_current_user)):
-    prices = stripe.Price.list(active=True, type="recurring", expand=["data.product"])
-    selected_price = None
-    for price in prices.auto_paging_iter():
-        if price.product.metadata.get("plan_id") == plan:
-            selected_price = price
-            break
-    if not selected_price:
-        raise HTTPException(status_code=404, detail="Plan not found")
-    if not current_user.stripe_customer_id:
-        customer = stripe.Customer.create(email=current_user.email)
-        await users_collection.update_one({"_id": current_user.id}, {"$set": {"stripe_customer_id": customer.id}})
-        stripe_customer_id = customer.id
-    else:
-        stripe_customer_id = current_user.stripe_customer_id
-    session = stripe.checkout.Session.create(
-        customer=stripe_customer_id,
-        payment_method_types=["card"],
-        line_items=[{"price": selected_price.id, "quantity": 1}],
-        mode="subscription",
-        success_url=f"{FRONTEND_URL}/dashboard?success=true",
-        cancel_url=f"{FRONTEND_URL}/pricing?canceled=true"
+    message = Mail(
+        from_email=EMAIL_FROM,
+        to_emails=to_email,
+        subject=subject,
+        html_content=content,
     )
-    return {"url": session.url}
 
-# -------------------------------
-# CUSTOMER PORTAL
-# -------------------------------
+    sg = SendGridAPIClient(SENDGRID_API_KEY)
+    sg.send(message)
 
-@api_router.post("/subscriptions/portal")
-async def create_customer_portal(current_user: User = Depends(get_current_user)):
-    if not current_user.stripe_customer_id:
-        raise HTTPException(status_code=400, detail="No Stripe customer")
-    session = stripe.billing_portal.Session.create(
-        customer=current_user.stripe_customer_id,
-        return_url=f"{FRONTEND_URL}/dashboard"
+# =====================================================
+# MODELS
+# =====================================================
+
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class CodeRequest(BaseModel):
+    prompt: str
+    language: str = "python"
+
+
+class CodeInput(BaseModel):
+    code: str
+
+
+# =====================================================
+# AUTH HELPERS
+# =====================================================
+
+def get_current_user(request: Request):
+
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header:
+        raise HTTPException(status_code=401)
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+        user = users_collection.find_one({"email": payload["email"]})
+
+        if not user:
+            raise HTTPException(status_code=401)
+
+        return user
+
+    except:
+        raise HTTPException(status_code=401)
+
+
+# =====================================================
+# AUTH ROUTES
+# =====================================================
+
+@app.post("/api/auth/signup")
+def signup(data: SignupRequest):
+
+    if users_collection.find_one({"email": data.email}):
+        raise HTTPException(400, "User already exists")
+
+    hashed = hash_password(data.password)
+
+    user = {
+        "name": data.name,
+        "email": data.email,
+        "password": hashed,
+        "created": datetime.utcnow(),
+    }
+
+    users_collection.insert_one(user)
+
+    access = create_access_token({"email": data.email})
+    refresh = create_refresh_token({"email": data.email})
+
+    send_email(
+        data.email,
+        "Welcome",
+        "<h2>Welcome to CursorCode AI</h2>"
     )
-    return {"url": session.url}
 
-# -------------------------------
-# SEAT MANAGEMENT
-# -------------------------------
+    return {
+        "access_token": access,
+        "refresh_token": refresh,
+        "user": {"name": data.name, "email": data.email}
+    }
 
-@api_router.post("/subscriptions/update-seats")
-async def update_seats(quantity: int, current_user: User = Depends(get_current_user)):
-    if not current_user.stripe_subscription_id:
-        raise HTTPException(status_code=400, detail="No subscription")
-    subscription = stripe.Subscription.retrieve(current_user.stripe_subscription_id)
-    item_id = subscription["items"]["data"][0]["id"]
-    stripe.Subscription.modify(current_user.stripe_subscription_id, items=[{"id": item_id, "quantity": quantity}])
-    return {"message": "Seats updated"}
 
-# -------------------------------
-# STRIPE WEBHOOK
-# -------------------------------
+@app.post("/api/auth/login")
+def login(data: LoginRequest):
 
-@api_router.post("/stripe/webhook")
-async def stripe_webhook(request: Request):
-    payload = await request.body()
-    sig_header = request.headers.get("stripe-signature")
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-    except stripe.error.SignatureVerificationError:
-        raise HTTPException(status_code=400, detail="Invalid signature")
-    if await webhook_events.find_one({"event_id": event["id"]}):
-        return {"status": "already_processed"}
-    await webhook_events.insert_one({"event_id": event["id"], "created_at": datetime.utcnow()})
-    obj = event["data"]["object"]
+    user = users_collection.find_one({"email": data.email})
 
-    if event["type"] == "checkout.session.completed" and obj.get("subscription"):
-        sub_id = obj["subscription"]
-        subscription = stripe.Subscription.retrieve(sub_id)
-        product = stripe.Product.retrieve(subscription["items"]["data"][0]["price"]["product"])
-        plan_id = product.metadata.get("plan_id", "starter")
-        await users_collection.update_one(
-            {"stripe_customer_id": obj["customer"]},
-            {"$set": {
-                "plan": plan_id,
-                "credits": PLAN_CREDITS[plan_id],
-                "stripe_subscription_id": sub_id,
-                "subscription_status": subscription["status"]
-            }}
-        )
-        await evaluate_plan_suggestion(obj["customer"])
-    elif event["type"] == "invoice.paid":
-        user = await users_collection.find_one({"stripe_customer_id": obj["customer"]})
-        if user:
-            await reset_monthly_credits(User(**user))
-    elif event["type"] == "invoice.payment_failed":
-        await users_collection.update_one({"stripe_customer_id": obj["customer"]}, {"$set": {"subscription_status": "past_due"}})
-    elif event["type"] == "customer.subscription.deleted":
-        await users_collection.update_one(
-            {"stripe_customer_id": obj["customer"]},
-            {"$set": {"plan": "starter", "credits": PLAN_CREDITS["starter"], "subscription_status": "canceled"}}
-        )
-    return {"status": "success"}
+    if not user or not verify_password(data.password, user["password"]):
+        raise HTTPException(401, "Invalid credentials")
 
-# -------------------------------
-# ANALYTICS DASHBOARD
-# -------------------------------
+    access = create_access_token({"email": data.email})
+    refresh = create_refresh_token({"email": data.email})
 
-@api_router.get("/admin/analytics")
-async def analytics_dashboard():
-    try:
-        active_users = await users_collection.count_documents({"stripe_subscription_id": {"$ne": None}})
-        total_users = await users_collection.count_documents({})
-        top_users_cursor = users_collection.find().sort("leaderboard_points", -1).limit(10)
-        top_users = [{"email": u["email"], "points": u["leaderboard_points"]} async for u in top_users_cursor]
-        plan_suggestions_cursor = users_collection.find({"plan_suggestion": {"$ne": None}}).limit(100)
-        plan_suggestions = [{"email": u["email"], "suggested_plan": u["plan_suggestion"]} async for u in plan_suggestions_cursor]
-        return {
-            "active_users": active_users,
-            "total_users": total_users,
-            "top_users": top_users,
-            "plan_suggestions": plan_suggestions
+    return {
+        "access_token": access,
+        "refresh_token": refresh,
+        "user": {"name": user["name"], "email": user["email"]}
+    }
+
+
+@app.get("/api/auth/me")
+def me(user=Depends(get_current_user)):
+    return {"name": user["name"], "email": user["email"]}
+
+
+# =====================================================
+# GITHUB OAUTH
+# =====================================================
+
+@app.get("/api/auth/github")
+
+def github_login():
+
+    redirect = (
+        "https://github.com/login/oauth/authorize"
+        f"?client_id={GITHUB_CLIENT_ID}"
+        f"&redirect_uri={FRONTEND_URL}/github/callback"
+    )
+
+    return {"url": redirect}
+
+
+@app.get("/api/auth/github/callback")
+
+def github_callback(code: str):
+
+    token_res = requests.post(
+        "https://github.com/login/oauth/access_token",
+        headers={"Accept": "application/json"},
+        data={
+            "client_id": GITHUB_CLIENT_ID,
+            "client_secret": GITHUB_CLIENT_SECRET,
+            "code": code,
+        },
+    )
+
+    access_token = token_res.json()["access_token"]
+
+    user_res = requests.get(
+        "https://api.github.com/user",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    user_data = user_res.json()
+
+    email = f"{user_data['login']}@github.com"
+
+    user = users_collection.find_one({"email": email})
+
+    if not user:
+        user = {
+            "name": user_data["login"],
+            "email": email,
+            "password": None,
         }
-    except Exception as e:
-        logger.error(f"Analytics error: {e}")
-        return {"active_users": 0, "total_users": 0, "top_users": [], "plan_suggestions": [], "error": str(e)}
 
-# -------------------------------
-# ADMIN REVENUE
-# -------------------------------
+        users_collection.insert_one(user)
 
-@api_router.get("/admin/revenue")
-async def revenue_dashboard():
-    try:
-        subscriptions = stripe.Subscription.list(limit=100)
-        total = sum(
-            sub["items"]["data"][0]["price"]["unit_amount"] / 100
-            for sub in subscriptions.auto_paging_iter() if sub.status == "active"
-        )
-        return {"estimated_monthly_revenue": total}
-    except Exception as e:
-        logger.error(f"Revenue error: {e}")
-        return {"estimated_monthly_revenue": 0, "error": str(e)}
+    access = create_access_token({"email": email})
+    refresh = create_refresh_token({"email": email})
 
-# -------------------------------
-# ROOT HEALTH CHECK
-# -------------------------------
+    return {
+        "access_token": access,
+        "refresh_token": refresh,
+        "user": {"name": user["name"], "email": email}
+    }
 
-@app.get("/")
-async def root():
-    return {"status": "Platform Live ✅"}
 
-# -------------------------------
-# STARTUP EVENT
-# -------------------------------
+# =====================================================
+# AI CODE ENGINE
+# =====================================================
 
-@app.on_event("startup")
-async def startup_event():
-    await check_mongo_connection()
+@app.post("/api/ai/generate")
 
-# -------------------------------
-# REGISTER ROUTER
-# -------------------------------
+def generate_code(data: CodeRequest, user=Depends(get_current_user)):
 
-app.include_router(api_router, prefix="/api")
+    prompt = f"""
+Generate production ready {data.language} code.
 
-# -------------------------------
-# RUN SERVER
-# -------------------------------
+{data.prompt}
+"""
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), reload=True)
+    response = ai_client.chat.completions.create(
+        model=DEFAULT_MODEL,
+        messages=[
+            {"role": "system", "content": "You are an elite software engineer"},
+            {"role": "user", "content": prompt},
+        ],
+    )
+
+    return {
+        "code": response.choices[0].message.content
+    }
+
+
+@app.post("/api/ai/explain")
+
+def explain_code(data: CodeInput, user=Depends(get_current_user)):
+
+    response = ai_client.chat.completions.create(
+        model=DEFAULT_MODEL,
+        messages=[
+            {"role": "system", "content": "Explain this code clearly"},
+            {"role": "user", "content": data.code},
+        ],
+    )
+
+    return {"explanation": response.choices[0].message.content}
+
+
+@app.post("/api/ai/fix")
+
+def fix_code(data: CodeInput, user=Depends(get_current_user)):
+
+    response = ai_client.chat.completions.create(
+        model=DEFAULT_MODEL,
+        messages=[
+            {"role": "system", "content": "Fix bugs in this code"},
+            {"role": "user", "content": data.code},
+        ],
+    )
+
+    return {"fixed_code": response.choices[0].message.content}
+
+
+# =====================================================
+# STRIPE PAYMENTS
+# =====================================================
+
+@app.post("/api/payments/create-checkout")
+
+def create_checkout(user=Depends(get_current_user)):
+
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        mode="payment",
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {"name": "CursorCode AI Pro"},
+                "unit_amount": 2000,
+            },
+            "quantity": 1,
+        }],
+        success_url=f"{FRONTEND_URL}/success",
+        cancel_url=f"{FRONTEND_URL}/cancel",
+    )
+
+    return {"url": session.url}
+
+
+# =====================================================
+# HEALTH
+# =====================================================
+
+@app.get("/api/health")
+
+def health():
+    return {"status": "ok", "time": time.time()}
