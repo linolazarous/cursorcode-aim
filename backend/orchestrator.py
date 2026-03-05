@@ -2,6 +2,7 @@
 CursorCode AI - Grok Orchestrator
 Production-ready simplified orchestration engine
 Compatible with xAI Grok API (2026)
+Streaming updated for fastapi-sse
 """
 
 import os
@@ -10,12 +11,12 @@ import logging
 from typing import AsyncGenerator, List, Dict
 
 import httpx
+from fastapi_sse.sse import EventSourceResponse  # Updated for fastapi-sse
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 XAI_API_URL = "https://api.x.ai/v1/chat/completions"
-
 DEFAULT_MODEL = os.getenv("DEFAULT_XAI_MODEL", "grok-4-latest")
 
 # ---------------------------------------------------
@@ -34,7 +35,6 @@ async def call_grok(
     temperature: float = 0.5,
     max_tokens: int = 4096,
 ) -> str:
-
     payload = {
         "model": model,
         "messages": messages,
@@ -51,11 +51,8 @@ async def call_grok(
             },
             json=payload,
         )
-
         response.raise_for_status()
-
         data = response.json()
-
         return data["choices"][0]["message"]["content"]
 
     except httpx.HTTPError as e:
@@ -71,26 +68,21 @@ AGENT_PROMPTS = {
 Design scalable architecture for the user's project.
 Include tech stack, database, APIs, and deployment strategy.
 """,
-
     "frontend": """
 Generate modern frontend UI code using Next.js, React, and Tailwind.
 Focus on performance and responsive design.
 """,
-
     "backend": """
 Generate secure backend APIs using FastAPI.
 Include authentication, database models, and endpoints.
 """,
-
     "security": """
 Analyze code and architecture for vulnerabilities.
 Suggest security improvements and best practices.
 """,
-
     "qa": """
 Generate automated tests using pytest and integration tests.
 """,
-
     "devops": """
 Generate deployment configuration including Docker, CI/CD,
 and cloud deployment steps.
@@ -107,7 +99,6 @@ async def run_agent(
     user_prompt: str,
     context: str = "",
 ) -> str:
-
     if agent not in AGENT_PROMPTS:
         raise ValueError(f"Unknown agent: {agent}")
 
@@ -125,7 +116,6 @@ async def run_agent(
         model=DEFAULT_MODEL,
         messages=messages,
     )
-
     return result
 
 
@@ -136,24 +126,13 @@ async def orchestrate_project(
     api_key: str,
     prompt: str,
 ) -> Dict:
-
     logger.info("Starting orchestration pipeline")
 
     architecture = await run_agent(api_key, "architect", prompt)
-
     frontend = await run_agent(api_key, "frontend", prompt, architecture)
-
     backend = await run_agent(api_key, "backend", prompt, architecture)
-
-    security = await run_agent(
-        api_key,
-        "security",
-        prompt,
-        frontend + "\n\n" + backend,
-    )
-
+    security = await run_agent(api_key, "security", prompt, frontend + "\n\n" + backend)
     tests = await run_agent(api_key, "qa", prompt, backend)
-
     devops = await run_agent(api_key, "devops", prompt, backend)
 
     return {
@@ -167,52 +146,33 @@ async def orchestrate_project(
 
 
 # ---------------------------------------------------
-# Streaming Orchestration
+# Streaming Orchestration via fastapi-sse
 # ---------------------------------------------------
-async def stream_orchestration(
+async def stream_orchestration_sse(
     project_id: str,
     prompt: str,
     api_key: str,
-) -> AsyncGenerator[str, None]:
+) -> EventSourceResponse:
 
-    logger.info(f"Streaming orchestration started for {project_id}")
+    async def event_generator() -> AsyncGenerator[str, None]:
+        logger.info(f"Streaming orchestration started for {project_id}")
+        yield "Starting orchestration...\n"
 
-    yield f"data: Starting orchestration for {project_id}\n\n"
+        agents = ["architect", "frontend", "backend", "security", "qa", "devops"]
+        context = ""
 
-    agents = [
-        "architect",
-        "frontend",
-        "backend",
-        "security",
-        "qa",
-        "devops",
-    ]
+        for agent in agents:
+            yield f"Running {agent} agent...\n"
+            try:
+                result = await run_agent(api_key, agent, prompt, context)
+                context += "\n\n" + result[:2000]  # Keep context manageable
+                yield f"{agent} completed\n"
+                yield result + "\n"
+            except Exception as e:
+                logger.error(f"{agent} failed: {e}")
+                yield f"{agent} failed\n"
+            await asyncio.sleep(0.5)
 
-    context = ""
+        yield "[COMPLETE] Project generated\n"
 
-    for agent in agents:
-
-        yield f"data: Running {agent} agent...\n\n"
-
-        try:
-
-            result = await run_agent(
-                api_key=api_key,
-                agent=agent,
-                user_prompt=prompt,
-                context=context,
-            )
-
-            context += "\n\n" + result[:2000]
-
-            yield f"data: {agent} completed\n\n"
-            yield f"data: {result}\n\n"
-
-        except Exception as e:
-
-            logger.error(f"{agent} failed: {e}")
-            yield f"data: {agent} failed\n\n"
-
-        await asyncio.sleep(0.5)
-
-    yield "data: [COMPLETE] Project generated\n\n"
+    return EventSourceResponse(event_generator())
