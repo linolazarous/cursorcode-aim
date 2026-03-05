@@ -1,20 +1,35 @@
 import os
 import jwt
 import time
-import requests
 import stripe
+import requests
+import logging
 from datetime import datetime, timedelta
+
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from pymongo import MongoClient
+
 from dotenv import load_dotenv
+
 from openai import OpenAI
+
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
+
+# =====================================================
+# LOAD ENV
+# =====================================================
+
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("cursorcode")
+
 
 # =====================================================
 # ENV VARIABLES
@@ -26,7 +41,7 @@ DB_NAME = os.getenv("DB_NAME")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET")
 
-FRONTEND_URL = os.getenv("FRONTEND_URL")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
 
 GITHUB_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
@@ -35,7 +50,7 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
-DEFAULT_MODEL = os.getenv("DEFAULT_XAI_MODEL")
+DEFAULT_MODEL = os.getenv("DEFAULT_XAI_MODEL", "grok-4-latest")
 
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 EMAIL_FROM = os.getenv("EMAIL_FROM")
@@ -44,17 +59,22 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
+
 # =====================================================
 # DATABASE
 # =====================================================
 
 client = MongoClient(MONGO_URL)
+
 db = client[DB_NAME]
 
 users_collection = db["users"]
+analytics_collection = db["analytics"]
+usage_collection = db["ai_usage"]
+
 
 # =====================================================
-# AI CLIENT
+# AI CLIENT (xAI Grok)
 # =====================================================
 
 ai_client = OpenAI(
@@ -62,25 +82,31 @@ ai_client = OpenAI(
     base_url="https://api.x.ai/v1",
 )
 
+
 # =====================================================
 # PASSWORD HASHING
 # =====================================================
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 # =====================================================
 # FASTAPI APP
 # =====================================================
 
-app = FastAPI()
+app = FastAPI(
+    title="CursorCode AI",
+    version="1.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],
+    allow_origins=[FRONTEND_URL, "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # =====================================================
 # UTILS
@@ -89,32 +115,48 @@ app.add_middleware(
 def hash_password(password):
     return pwd_context.hash(password)
 
+
 def verify_password(password, hashed):
     return pwd_context.verify(password, hashed)
 
+
 def create_access_token(data):
+
     payload = data.copy()
     payload["exp"] = datetime.utcnow() + timedelta(hours=2)
+
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
 
+
 def create_refresh_token(data):
+
     payload = data.copy()
     payload["exp"] = datetime.utcnow() + timedelta(days=30)
+
     return jwt.encode(payload, JWT_REFRESH_SECRET, algorithm="HS256")
 
+
 def send_email(to_email, subject, content):
+
     if not SENDGRID_API_KEY:
         return
 
-    message = Mail(
-        from_email=EMAIL_FROM,
-        to_emails=to_email,
-        subject=subject,
-        html_content=content,
-    )
+    try:
 
-    sg = SendGridAPIClient(SENDGRID_API_KEY)
-    sg.send(message)
+        message = Mail(
+            from_email=EMAIL_FROM,
+            to_emails=to_email,
+            subject=subject,
+            html_content=content,
+        )
+
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        sg.send(message)
+
+    except Exception as e:
+
+        logger.error(f"Email error {e}")
+
 
 # =====================================================
 # MODELS
@@ -154,7 +196,9 @@ def get_current_user(request: Request):
     token = auth_header.split(" ")[1]
 
     try:
+
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+
         user = users_collection.find_one({"email": payload["email"]})
 
         if not user:
@@ -163,6 +207,7 @@ def get_current_user(request: Request):
         return user
 
     except:
+
         raise HTTPException(status_code=401)
 
 
@@ -171,9 +216,11 @@ def get_current_user(request: Request):
 # =====================================================
 
 @app.post("/api/auth/signup")
+
 def signup(data: SignupRequest):
 
     if users_collection.find_one({"email": data.email}):
+
         raise HTTPException(400, "User already exists")
 
     hashed = hash_password(data.password)
@@ -183,6 +230,7 @@ def signup(data: SignupRequest):
         "email": data.email,
         "password": hashed,
         "created": datetime.utcnow(),
+        "plan": "free",
     }
 
     users_collection.insert_one(user)
@@ -192,23 +240,25 @@ def signup(data: SignupRequest):
 
     send_email(
         data.email,
-        "Welcome",
-        "<h2>Welcome to CursorCode AI</h2>"
+        "Welcome to CursorCode AI",
+        "<h2>Welcome to CursorCode AI</h2>",
     )
 
     return {
         "access_token": access,
         "refresh_token": refresh,
-        "user": {"name": data.name, "email": data.email}
+        "user": {"name": data.name, "email": data.email},
     }
 
 
 @app.post("/api/auth/login")
+
 def login(data: LoginRequest):
 
     user = users_collection.find_one({"email": data.email})
 
     if not user or not verify_password(data.password, user["password"]):
+
         raise HTTPException(401, "Invalid credentials")
 
     access = create_access_token({"email": data.email})
@@ -217,12 +267,40 @@ def login(data: LoginRequest):
     return {
         "access_token": access,
         "refresh_token": refresh,
-        "user": {"name": user["name"], "email": user["email"]}
+        "user": {"name": user["name"], "email": user["email"]},
     }
 
 
+@app.post("/api/auth/refresh")
+
+def refresh_token(request: Request):
+
+    token = request.headers.get("refresh-token")
+
+    if not token:
+        raise HTTPException(401)
+
+    try:
+
+        payload = jwt.decode(token, JWT_REFRESH_SECRET, algorithms=["HS256"])
+
+        access = create_access_token({"email": payload["email"]})
+        refresh = create_refresh_token({"email": payload["email"]})
+
+        return {
+            "access_token": access,
+            "refresh_token": refresh,
+        }
+
+    except:
+
+        raise HTTPException(401)
+
+
 @app.get("/api/auth/me")
+
 def me(user=Depends(get_current_user)):
+
     return {"name": user["name"], "email": user["email"]}
 
 
@@ -261,7 +339,7 @@ def github_callback(code: str):
 
     user_res = requests.get(
         "https://api.github.com/user",
-        headers={"Authorization": f"Bearer {access_token}"}
+        headers={"Authorization": f"Bearer {access_token}"},
     )
 
     user_data = user_res.json()
@@ -271,10 +349,11 @@ def github_callback(code: str):
     user = users_collection.find_one({"email": email})
 
     if not user:
+
         user = {
             "name": user_data["login"],
             "email": email,
-            "password": None,
+            "created": datetime.utcnow(),
         }
 
         users_collection.insert_one(user)
@@ -285,7 +364,7 @@ def github_callback(code: str):
     return {
         "access_token": access,
         "refresh_token": refresh,
-        "user": {"name": user["name"], "email": email}
+        "user": {"name": user_data["login"], "email": email},
     }
 
 
@@ -297,11 +376,7 @@ def github_callback(code: str):
 
 def generate_code(data: CodeRequest, user=Depends(get_current_user)):
 
-    prompt = f"""
-Generate production ready {data.language} code.
-
-{data.prompt}
-"""
+    prompt = f"Generate production ready {data.language} code.\n\n{data.prompt}"
 
     response = ai_client.chat.completions.create(
         model=DEFAULT_MODEL,
@@ -311,9 +386,15 @@ Generate production ready {data.language} code.
         ],
     )
 
-    return {
-        "code": response.choices[0].message.content
-    }
+    code = response.choices[0].message.content
+
+    usage_collection.insert_one({
+        "user": user["email"],
+        "time": datetime.utcnow(),
+        "type": "generate",
+    })
+
+    return {"code": code}
 
 
 @app.post("/api/ai/explain")
@@ -373,10 +454,32 @@ def create_checkout(user=Depends(get_current_user)):
 
 
 # =====================================================
-# HEALTH
+# ANALYTICS
+# =====================================================
+
+@app.get("/api/analytics")
+
+def analytics():
+
+    total_users = users_collection.count_documents({})
+
+    ai_calls = usage_collection.count_documents({})
+
+    return {
+        "total_users": total_users,
+        "ai_requests": ai_calls,
+    }
+
+
+# =====================================================
+# HEALTH CHECK
 # =====================================================
 
 @app.get("/api/health")
 
 def health():
-    return {"status": "ok", "time": time.time()}
+
+    return {
+        "status": "ok",
+        "time": time.time(),
+        }
