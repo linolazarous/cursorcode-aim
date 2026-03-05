@@ -5,7 +5,7 @@ fastapi==0.110.1
 starlette==0.37.2
 uvicorn[standard]==0.25.0
 gunicorn==21.2.0
-sse-starlette==0.21.2        # For server-sent events streaming
+sse-starlette==3.3.2        # Fixed version for server-sent events streaming
 
 # =====================================================
 # Data Validation
