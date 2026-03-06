@@ -16,7 +16,7 @@ import subprocess
 from typing import AsyncGenerator, List, Dict
 
 import httpx
-from fastapi_sse.sse import EventSourceResponse
+from sse_starlette.sse import EventSourceResponse  # <-- updated import
 
 from backend.ai_memory import AIMemory
 from backend.code_executor import execute_code
