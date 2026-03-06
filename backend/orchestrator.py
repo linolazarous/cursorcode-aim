@@ -16,15 +16,23 @@ import subprocess
 from typing import AsyncGenerator, List, Dict
 
 import httpx
-from sse_starlette.sse import EventSourceResponse  # <-- updated import
+from sse_starlette.sse import EventSourceResponse  # SSE streaming
 
-# Changed from 'from backend.ai_memory import AIMemory' to relative import
-from .ai_memory import AIMemory
-from .code_executor import execute_code
+# -----------------------------
+# Absolute imports for backend package
+# -----------------------------
+from backend.ai_memory import AIMemory
+from backend.code_executor import execute_code
 
+# -----------------------------
+# Logging setup
+# -----------------------------
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+# -----------------------------
+# Environment / AI setup
+# -----------------------------
 XAI_API_URL = "https://api.x.ai/v1/chat/completions"
 DEFAULT_MODEL = os.getenv("DEFAULT_XAI_MODEL", "grok-4-latest")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
@@ -35,9 +43,9 @@ memory = AIMemory(MONGO_URL, MEMORY_DB)
 # Shared HTTP Client
 client = httpx.AsyncClient(timeout=90.0)
 
-# ---------------------------------------------------
-# Core Grok Call
-# ---------------------------------------------------
+# -----------------------------
+# Core AI call
+# -----------------------------
 async def call_grok(
     api_key: str,
     model: str,
@@ -67,9 +75,9 @@ async def call_grok(
         logger.error(f"Grok API error: {e}")
         raise Exception("AI request failed")
 
-# ---------------------------------------------------
-# Agent Prompts
-# ---------------------------------------------------
+# -----------------------------
+# Agent prompts
+# -----------------------------
 AGENT_PROMPTS = {
     "architect": "Design scalable architecture for the user's project including tech stack, database, APIs, and deployment strategy.",
     "frontend": "Generate modern frontend UI code using Next.js, React, and Tailwind. Focus on performance and responsive design.",
@@ -79,9 +87,9 @@ AGENT_PROMPTS = {
     "devops": "Generate deployment configuration including Docker, CI/CD, and cloud deployment steps."
 }
 
-# ---------------------------------------------------
-# Run Agent
-# ---------------------------------------------------
+# -----------------------------
+# Run individual agent
+# -----------------------------
 async def run_agent(
     api_key: str,
     agent: str,
@@ -99,13 +107,10 @@ async def run_agent(
     ]
     return await call_grok(api_key, DEFAULT_MODEL, messages)
 
-# ---------------------------------------------------
-# Deploy Preview
-# ---------------------------------------------------
+# -----------------------------
+# Deploy preview
+# -----------------------------
 async def deploy_preview(project_name: str, frontend_path: str, backend_path: str) -> str:
-    """
-    Deploy project to a live preview domain using docker-compose and Nginx/Traefik.
-    """
     domain = f"{project_name}.cursorcode.ai.app"
     try:
         subprocess.run(["docker-compose", "-f", f"{frontend_path}/docker-compose.yml", "up", "-d"], check=True)
@@ -116,13 +121,12 @@ async def deploy_preview(project_name: str, frontend_path: str, backend_path: st
         logger.error(f"Deployment failed: {e}")
         return "Deployment failed"
 
-# ---------------------------------------------------
-# Main Orchestration Pipeline
-# ---------------------------------------------------
+# -----------------------------
+# Main orchestration pipeline
+# -----------------------------
 async def orchestrate_project(api_key: str, prompt: str, user_email: str) -> Dict:
     logger.info("Starting orchestration pipeline")
 
-    # Inject AI memory
     memory_context = memory.build_context(user_email)
     full_prompt = prompt + "\n\n" + memory_context
 
@@ -168,9 +172,9 @@ async def orchestrate_project(api_key: str, prompt: str, user_email: str) -> Dic
         "preview_url": preview_url
     }
 
-# ---------------------------------------------------
-# Streaming SSE Orchestration
-# ---------------------------------------------------
+# -----------------------------
+# SSE streaming orchestration
+# -----------------------------
 async def stream_orchestration_sse(
     project_id: str,
     prompt: str,
