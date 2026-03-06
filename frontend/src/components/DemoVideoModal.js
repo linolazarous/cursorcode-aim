@@ -8,6 +8,8 @@ export default function DemoVideoModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
+  const videoSrc = `${process.env.PUBLIC_URL}/demo-video.mp4`;
+
   return (
     <AnimatePresence>
       <motion.div
@@ -41,24 +43,23 @@ export default function DemoVideoModal({ isOpen, onClose }) {
                 className="w-full h-full object-cover"
                 controls
                 autoPlay
+                muted
                 playsInline
                 onError={() => setVideoError(true)}
                 data-testid="demo-video"
               >
-                <source src="/demo-video.mp4" type="video/mp4" />
+                <source src={videoSrc} type="video/mp4" />
                 Your browser does not support the video tag.
               </video>
             ) : (
               /* Placeholder when video is not available */
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-void via-void-paper to-void">
-                {/* Animated background pattern */}
                 <div className="absolute inset-0 opacity-10">
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.3),transparent_70%)]" />
                   <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-electric/20 rounded-full blur-3xl animate-pulse" />
                   <div className="absolute bottom-1/4 right-1/4 w-48 h-48 bg-emerald/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
                 </div>
 
-                {/* Placeholder content */}
                 <div className="relative z-10 text-center px-8">
                   <div className="w-20 h-20 rounded-full bg-electric/20 flex items-center justify-center mx-auto mb-6 border border-electric/30">
                     <Play className="w-10 h-10 text-electric" />
@@ -78,7 +79,6 @@ export default function DemoVideoModal({ isOpen, onClose }) {
                   </div>
                 </div>
 
-                {/* Feature highlights */}
                 <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-8">
                   {["Prompt to Code", "AI Agents", "One-Click Deploy"].map((feature, i) => (
                     <div
