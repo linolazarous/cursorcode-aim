@@ -1,30 +1,28 @@
+"""
+CursorCode AI - FastAPI Backend Server
+Render-ready with absolute imports and SSE streaming
+"""
+
 import os
 import jwt
 import time
 import stripe
-import requests
 import logging
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from pymongo import MongoClient
-
 from dotenv import load_dotenv
-from openai import OpenAI
 
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
-
-# Changed from 'from orchestrator import ...' to absolute import
+# Absolute import of orchestrator
 from backend.orchestrator import orchestrate_project, stream_orchestration_sse
 
 # =====================================================
-# LOAD ENVIRONMENT
+# Load environment
 # =====================================================
 load_dotenv()
 
@@ -42,14 +40,8 @@ JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET", "refresh_secret")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
 
-GITHUB_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID")
-GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
-
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 DEFAULT_MODEL = os.getenv("DEFAULT_XAI_MODEL", "grok-4-latest")
-
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-EMAIL_FROM = os.getenv("EMAIL_FROM")
 
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 stripe.api_key = STRIPE_SECRET_KEY
@@ -91,10 +83,6 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
-
-class CodeRequest(BaseModel):
-    prompt: str
-    language: str = "python"
 
 # =====================================================
 # AUTH HELPERS
@@ -139,7 +127,13 @@ def signup(data: SignupRequest):
     if users_collection.find_one({"email": data.email}):
         raise HTTPException(400, "User already exists")
     hashed = hash_password(data.password)
-    user = {"name": data.name, "email": data.email, "password": hashed, "created": datetime.utcnow(), "plan": "free"}
+    user = {
+        "name": data.name,
+        "email": data.email,
+        "password": hashed,
+        "created": datetime.utcnow(),
+        "plan": "free"
+    }
     users_collection.insert_one(user)
     access = create_access_token({"email": data.email})
     refresh = create_refresh_token({"email": data.email})
@@ -174,6 +168,13 @@ async def deploy_project(prompt: str, user=Depends(get_current_user)):
 # STREAMING ORCHESTRATION
 # =====================================================
 @app.get("/api/project/stream")
-async def project_stream(project_id: str, prompt: str, user=Depends(get_current_user)):
-    generator = await stream_orchestration_sse(project_id, prompt, XAI_API_KEY, user["email"])
-    return StreamingResponse(generator, media_type="text/event-stream")
+async def project_stream(
+    project_id: str = Query(...),
+    prompt: str = Query(...),
+    user=Depends(get_current_user)
+):
+    """
+    Stream orchestration results using SSE
+    """
+    event_source = await stream_orchestration_sse(project_id, prompt, XAI_API_KEY, user["email"])
+    return event_source
