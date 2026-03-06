@@ -20,7 +20,8 @@ from openai import OpenAI
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
-from orchestrator import orchestrate_project, stream_orchestration_sse
+# Changed from 'from orchestrator import ...' to absolute import
+from backend.orchestrator import orchestrate_project, stream_orchestration_sse
 
 # =====================================================
 # LOAD ENVIRONMENT
