@@ -10,28 +10,32 @@ import Logo from "../components/Logo";
 export default function GitHubCallbackPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { setUser } = useAuth(); // Update auth context
   const [error, setError] = useState(null);
 
-  // Wrap callback in useCallback to prevent ESLint warning
   const handleGitHubCallback = useCallback(
     async (code) => {
       try {
-        const response = await api.post(`/auth/github/callback?code=${code}`);
+        if (!code) throw new Error("No authorization code received");
+
+        const response = await api.post("/auth/github/callback", { code });
         const { access_token, refresh_token, user } = response.data;
 
+        // Save tokens
         localStorage.setItem("access_token", access_token);
         localStorage.setItem("refresh_token", refresh_token);
 
+        // Update auth context
+        setUser(user);
+
         toast.success(`Welcome, ${user.name}!`);
         navigate("/dashboard");
-        window.location.reload(); // Refresh to update auth state
-      } catch (error) {
-        console.error("GitHub callback error:", error);
-        setError(error.response?.data?.detail || "GitHub authentication failed");
+      } catch (err) {
+        console.error("GitHub callback error:", err);
+        setError(err?.response?.data?.detail || err.message || "GitHub authentication failed");
       }
     },
-    [navigate]
+    [navigate, setUser]
   );
 
   useEffect(() => {
@@ -43,11 +47,7 @@ export default function GitHubCallbackPage() {
       return;
     }
 
-    if (code) {
-      handleGitHubCallback(code);
-    } else {
-      setError("No authorization code received");
-    }
+    handleGitHubCallback(code);
   }, [searchParams, handleGitHubCallback]);
 
   if (error) {
