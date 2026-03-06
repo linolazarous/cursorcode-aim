@@ -18,8 +18,9 @@ from typing import AsyncGenerator, List, Dict
 import httpx
 from sse_starlette.sse import EventSourceResponse  # <-- updated import
 
-from backend.ai_memory import AIMemory
-from backend.code_executor import execute_code
+# Changed from 'from backend.ai_memory import AIMemory' to relative import
+from .ai_memory import AIMemory
+from .code_executor import execute_code
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
