@@ -9,99 +9,194 @@ import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import Logo from "../components/Logo";
 
 export default function VerifyEmailPage() {
+
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
 
-  const [status, setStatus] = useState("verifying"); // "verifying", "success", "error"
-  const [message, setMessage] = useState("");
+  const [status,setStatus] = useState("verifying")
+  const [message,setMessage] = useState("")
+
+
+
+  // =====================================================
+  // VERIFY EMAIL FUNCTION
+  // =====================================================
 
   const verifyEmail = useCallback(async (token) => {
-    try {
-      await api.get(`/auth/verify-email?token=${token}`);
-      setStatus("success");
-      setMessage("Your email has been verified!");
-      await refreshUser();
-      toast.success("Email verified successfully!");
-      setTimeout(() => navigate("/dashboard"), 2000);
-    } catch (error) {
-      setStatus("error");
-      setMessage(error.response?.data?.detail || "Verification failed");
-    }
-  }, [refreshUser, navigate]);
 
-  useEffect(() => {
-    const token = searchParams.get("token");
-    if (token) {
-      verifyEmail(token);
-    } else {
-      setStatus("error");
-      setMessage("Invalid verification link");
+    try {
+
+      const res = await api.get(`/api/auth/verify-email`,{
+        params:{ token }
+      })
+
+      setStatus("success")
+
+      setMessage(
+        res?.data?.message || "Your email has been verified successfully."
+      )
+
+      toast.success("Email verified successfully!")
+
+      await refreshUser()
+
+      setTimeout(()=>{
+        navigate("/dashboard")
+      },2000)
+
     }
-  }, [searchParams, verifyEmail]);
+
+    catch(error){
+
+      console.error("Email verification error:",error)
+
+      setStatus("error")
+
+      const errorMessage =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        "Verification link is invalid or expired."
+
+      setMessage(errorMessage)
+
+      toast.error(errorMessage)
+
+    }
+
+  },[refreshUser,navigate])
+
+
+
+  // =====================================================
+  // READ TOKEN FROM URL
+  // =====================================================
+
+  useEffect(()=>{
+
+    const token = searchParams.get("token")
+
+    if(!token){
+
+      setStatus("error")
+
+      setMessage("Invalid verification link")
+
+      return
+    }
+
+    verifyEmail(token)
+
+  },[searchParams,verifyEmail])
+
+
 
   return (
+
     <div className="min-h-screen bg-void noise-bg flex items-center justify-center p-8">
+
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{opacity:0,scale:0.95}}
+        animate={{opacity:1,scale:1}}
         className="max-w-md w-full"
       >
+
         <div className="text-center mb-8">
-          <Logo size="large" className="justify-center" />
+          <Logo size="large" className="justify-center"/>
         </div>
 
+
         <div className="bg-void-paper border border-white/5 rounded-xl p-8 text-center">
+
+          {/* VERIFYING */}
+
           {status === "verifying" && (
+
             <>
-              <Loader2 className="w-16 h-16 text-electric mx-auto mb-4 animate-spin" />
+              <Loader2 className="w-16 h-16 text-electric mx-auto mb-4 animate-spin"/>
+
               <h2 className="font-outfit font-bold text-2xl text-white mb-2">
                 Verifying your email...
               </h2>
-              <p className="text-zinc-400">Please wait a moment</p>
+
+              <p className="text-zinc-400">
+                Please wait a moment
+              </p>
             </>
+
           )}
 
+
+
+          {/* SUCCESS */}
+
           {status === "success" && (
+
             <>
               <div className="w-16 h-16 rounded-full bg-emerald/20 flex items-center justify-center mx-auto mb-4">
-                <CheckCircle2 className="w-10 h-10 text-emerald" />
+
+                <CheckCircle2 className="w-10 h-10 text-emerald"/>
+
               </div>
+
               <h2 className="font-outfit font-bold text-2xl text-white mb-2">
                 Email Verified!
               </h2>
-              <p className="text-zinc-400 mb-6">{message}</p>
+
+              <p className="text-zinc-400 mb-6">
+                {message}
+              </p>
+
               <Button
-                onClick={() => navigate("/dashboard")}
+                onClick={()=>navigate("/dashboard")}
                 className="bg-electric hover:bg-electric/90 text-white"
-                data-testid="go-to-dashboard-btn"
               >
                 Go to Dashboard
               </Button>
+
             </>
+
           )}
 
+
+
+          {/* ERROR */}
+
           {status === "error" && (
+
             <>
               <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
-                <XCircle className="w-10 h-10 text-red-500" />
+
+                <XCircle className="w-10 h-10 text-red-500"/>
+
               </div>
+
               <h2 className="font-outfit font-bold text-2xl text-white mb-2">
                 Verification Failed
               </h2>
-              <p className="text-zinc-400 mb-6">{message}</p>
+
+              <p className="text-zinc-400 mb-6">
+                {message}
+              </p>
+
               <Button
-                onClick={() => navigate("/login")}
+                onClick={()=>navigate("/login")}
                 variant="outline"
                 className="border-white/10 text-white hover:bg-white/5"
-                data-testid="back-to-login-btn"
               >
                 Back to Login
               </Button>
+
             </>
+
           )}
+
         </div>
+
       </motion.div>
+
     </div>
-  );
+
+  )
+
 }
