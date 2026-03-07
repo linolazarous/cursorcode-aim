@@ -1,17 +1,11 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import api from "../lib/api";
-import {
-  CheckCircle2,
-  ArrowLeft,
-  Zap,
-  Loader2,
-} from "lucide-react";
+import { CheckCircle2, ArrowLeft, Zap, Loader2 } from "lucide-react";
 import Logo from "../components/Logo";
-import { Link } from "react-router-dom";
 import { useState } from "react";
 
 const PRICING_PLANS = [
@@ -21,12 +15,7 @@ const PRICING_PLANS = [
     price: 0,
     period: "Free forever",
     credits: 10,
-    features: [
-      "10 AI credits/month",
-      "1 project",
-      "Subdomain deploy",
-      "Community support",
-    ],
+    features: ["10 AI credits/month", "1 project", "Subdomain deploy", "Community support"],
     cta: "Current Plan",
     popular: false,
     disabled: true,
@@ -37,13 +26,7 @@ const PRICING_PLANS = [
     price: 29,
     period: "/month",
     credits: 75,
-    features: [
-      "75 AI credits/month",
-      "Full-stack & APIs",
-      "Native + external deploy",
-      "Version history",
-      "Email support",
-    ],
+    features: ["75 AI credits/month", "Full-stack & APIs", "Native + external deploy", "Version history", "Email support"],
     cta: "Get Standard",
     popular: false,
   },
@@ -53,13 +36,7 @@ const PRICING_PLANS = [
     price: 59,
     period: "/month",
     credits: 150,
-    features: [
-      "150 AI credits/month",
-      "SaaS & multi-tenant",
-      "Advanced agents",
-      "CI/CD integration",
-      "Priority builds",
-    ],
+    features: ["150 AI credits/month", "SaaS & multi-tenant", "Advanced agents", "CI/CD integration", "Priority builds"],
     cta: "Get Pro",
     popular: true,
   },
@@ -69,13 +46,7 @@ const PRICING_PLANS = [
     price: 199,
     period: "/month",
     credits: 600,
-    features: [
-      "600 AI credits/month",
-      "Large SaaS apps",
-      "Multi-org support",
-      "Advanced security scans",
-      "Priority support",
-    ],
+    features: ["600 AI credits/month", "Large SaaS apps", "Multi-org support", "Advanced security scans", "Priority support"],
     cta: "Get Premier",
     popular: false,
   },
@@ -85,13 +56,7 @@ const PRICING_PLANS = [
     price: 499,
     period: "/month",
     credits: 2000,
-    features: [
-      "2,000 AI credits/month",
-      "Unlimited projects",
-      "Dedicated compute",
-      "SLA guarantee",
-      "Enterprise support",
-    ],
+    features: ["2,000 AI credits/month", "Unlimited projects", "Dedicated compute", "SLA guarantee", "Enterprise support"],
     cta: "Contact Sales",
     popular: false,
   },
@@ -114,15 +79,22 @@ export default function PricingPage() {
 
     setLoadingPlan(planId);
     try {
-      const response = await api.post(`/subscriptions/create-checkout?plan=${planId}`);
+      // Send plan in POST body instead of query string
+      const response = await api.post("/subscriptions/create-checkout", { plan: planId });
+
       if (response.data.demo) {
         toast.info("Demo mode - configure Stripe keys for real payments");
         setLoadingPlan(null);
         return;
       }
+
       window.location.href = response.data.url;
     } catch (error) {
-      toast.error("Failed to start checkout");
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        "Failed to start checkout";
+      toast.error(message);
       setLoadingPlan(null);
     }
   };
@@ -143,7 +115,6 @@ export default function PricingPage() {
                   onClick={() => navigate("/dashboard")}
                   variant="ghost"
                   className="text-zinc-400 hover:text-white"
-                  data-testid="nav-dashboard-btn"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Back to Dashboard
@@ -173,23 +144,17 @@ export default function PricingPage() {
       {/* Hero */}
       <section className="pt-32 pb-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-electric/10 border border-electric/20 mb-6">
               <Zap className="w-4 h-4 text-electric" />
-              <span className="text-sm text-electric font-medium">
-                Simple, transparent pricing
-              </span>
+              <span className="text-sm text-electric font-medium">Simple, transparent pricing</span>
             </div>
 
             <h1 className="font-outfit font-bold text-4xl sm:text-5xl text-white mb-4">
               Choose your plan
             </h1>
             <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-              Start free, scale as you grow. All plans include access to our
-              multi-agent AI system powered by xAI Grok.
+              Start free, scale as you grow. All plans include access to our multi-agent AI system powered by xAI Grok.
             </p>
           </motion.div>
         </div>
@@ -210,11 +175,8 @@ export default function PricingPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
                   className={`relative p-6 rounded-xl border ${
-                    plan.popular
-                      ? "bg-electric/5 border-electric/30 shadow-glow"
-                      : "bg-void-paper/50 border-white/5"
+                    plan.popular ? "bg-electric/5 border-electric/30 shadow-glow" : "bg-void-paper/50 border-white/5"
                   }`}
-                  data-testid={`pricing-plan-${plan.id}`}
                 >
                   {plan.popular && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-electric text-xs font-medium text-white">
@@ -228,18 +190,12 @@ export default function PricingPage() {
                     </div>
                   )}
 
-                  <h3 className="font-outfit font-semibold text-lg text-white mb-2">
-                    {plan.name}
-                  </h3>
+                  <h3 className="font-outfit font-semibold text-lg text-white mb-2">{plan.name}</h3>
                   <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-3xl font-outfit font-bold text-white">
-                      ${plan.price}
-                    </span>
+                    <span className="text-3xl font-outfit font-bold text-white">${plan.price}</span>
                     <span className="text-sm text-zinc-500">{plan.period}</span>
                   </div>
-                  <p className="text-sm text-zinc-400 mb-6">
-                    {plan.credits} AI credits/month
-                  </p>
+                  <p className="text-sm text-zinc-400 mb-6">{plan.credits} AI credits/month</p>
 
                   <ul className="space-y-3 mb-6">
                     {plan.features.map((feature) => (
@@ -260,7 +216,6 @@ export default function PricingPage() {
                         ? "bg-white/5 text-zinc-500 cursor-not-allowed"
                         : "bg-white/5 hover:bg-white/10 text-white border border-white/10"
                     }`}
-                    data-testid={`pricing-cta-${plan.id}`}
                   >
                     {loadingPlan === plan.id ? (
                       <>
@@ -278,16 +233,10 @@ export default function PricingPage() {
             })}
           </div>
 
-          {/* FAQ or Additional Info */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="mt-16 text-center"
-          >
+          {/* FAQ / Additional Info */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="mt-16 text-center">
             <p className="text-zinc-400">
-              All plans include SSL certificates, 99.9% uptime SLA, and automatic
-              backups.
+              All plans include SSL certificates, 99.9% uptime SLA, and automatic backups.
             </p>
             <p className="text-zinc-500 text-sm mt-2">
               Need a custom plan?{" "}
@@ -301,13 +250,9 @@ export default function PricingPage() {
 
       {/* Footer */}
       <footer className="py-12 border-t border-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <Logo size="default" />
-            <div className="text-sm text-zinc-500">
-              © 2025 CursorCode AI. All rights reserved.
-            </div>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+          <Logo size="default" />
+          <div className="text-sm text-zinc-500">© 2025 CursorCode AI. All rights reserved.</div>
         </div>
       </footer>
     </div>
