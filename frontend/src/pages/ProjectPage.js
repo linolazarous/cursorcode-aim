@@ -1,62 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
-import { Textarea } from "../components/ui/textarea";
-import { useAuth } from "../context/AuthContext";
-import api from "../lib/api";
 import { toast } from "sonner";
-import Editor from "@monaco-editor/react";
-import {
-  ArrowLeft,
-  Play,
-  Cloud,
-  Save,
-  Loader2,
-  Code2,
-  Bot,
-  Zap,
-  Copy,
-  Check,
-  FileCode,
-  FileJson,
-  FileText,
-  File,
-  ExternalLink,
-  Sparkles,
-} from "lucide-react";
-import Logo from "../components/Logo";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "../components/ui/resizable";
-
-const FILE_ICONS = {
-  js: FileCode,
-  jsx: FileCode,
-  ts: FileCode,
-  tsx: FileCode,
-  json: FileJson,
-  css: FileText,
-  html: File,
-  md: FileText,
-  py: FileCode,
-  default: FileCode,
-};
-
-const MODELS = [
-  { id: "grok-4-latest", name: "Grok 4 (Frontier)", description: "Deep reasoning", credits: 3 },
-  { id: "grok-4-1-fast-reasoning", name: "Grok 4 Fast Reasoning", description: "Agentic workflows", credits: 2 },
-  { id: "grok-4-1-fast-non-reasoning", name: "Grok 4 Fast", description: "High-throughput", credits: 1 },
-];
+import api from "../lib/api";
+import { Loader2 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 export default function ProjectPage() {
   const { projectId } = useParams();
@@ -64,26 +12,21 @@ export default function ProjectPage() {
   const { user, refreshUser } = useAuth();
 
   const [project, setProject] = useState(null);
+  const [files, setFiles] = useState({});
+  const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [prompt, setPrompt] = useState("");
   const [generating, setGenerating] = useState(false);
   const [deploying, setDeploying] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("grok-4-1-fast-reasoning");
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [files, setFiles] = useState({});
-  const [copied, setCopied] = useState(false);
-  const [aiMessages, setAiMessages] = useState([]);
-  const messagesEndRef = useRef(null);
 
-  // Fetch project
   const fetchProject = useCallback(async () => {
     try {
-      const response = await api.get(`/projects/${projectId}`);
-      setProject(response.data);
-      setFiles(response.data.files || {});
-      const fileKeys = Object.keys(response.data.files || {});
-      if (fileKeys.length > 0) setSelectedFile(fileKeys[0]);
-    } catch {
+      const res = await api.get("/project/stream", { params: { project_id: projectId } });
+      setProject(res.data.project || {});
+      setFiles(res.data.project?.files || {});
+      const keys = Object.keys(res.data.project?.files || {});
+      if (keys.length) setSelectedFile(keys[0]);
+    } catch (err) {
       toast.error("Failed to load project");
       navigate("/dashboard");
     } finally {
@@ -95,72 +38,41 @@ export default function ProjectPage() {
     fetchProject();
   }, [fetchProject]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [aiMessages]);
-
   // Generate AI code
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim()) return toast.error("Please enter a prompt");
 
     const creditsRemaining = user?.credits - user?.credits_used || 0;
-    const modelCredits = MODELS.find((m) => m.id === selectedModel)?.credits || 2;
-
-    if (creditsRemaining < modelCredits) return toast.error("Insufficient credits");
+    if (creditsRemaining < 1) return toast.error("Insufficient credits");
 
     setGenerating(true);
-    setAiMessages((prev) => [
-      ...prev,
-      { type: "user", content: prompt },
-      { type: "system", content: "Generating code...", loading: true },
-    ]);
-
     try {
-      const response = await api.post("/ai/generate", {
-        project_id: projectId,
-        prompt,
-        model: selectedModel,
-        task_type: "code_generation",
-      });
-
-      const generatedCode = response.data.response;
+      const res = await api.post("/project/deploy", { prompt, project_id: projectId });
       const newFiles = { ...files };
-      if (!newFiles["App.jsx"]) newFiles["App.jsx"] = generatedCode;
-      else newFiles[`generated_${Date.now()}.jsx`] = generatedCode;
+      newFiles[`generated_${Date.now()}.jsx`] = res.data.response || "// generated code";
 
       setFiles(newFiles);
       setSelectedFile(Object.keys(newFiles)[Object.keys(newFiles).length - 1]);
-      await api.put(`/projects/${projectId}/files`, newFiles);
-
-      setAiMessages((prev) => [
-        ...prev.slice(0, -1),
-        { type: "assistant", content: `Generated code using ${response.data.model_used}. Used ${response.data.credits_used} credit(s).` },
-      ]);
-
+      toast.success("Code generated!");
       await refreshUser();
       setPrompt("");
-      toast.success("Code generated!");
-    } catch (error) {
-      const message = error.response?.data?.detail || "Generation failed";
+    } catch (err) {
+      const message = err.response?.data?.detail || "Generation failed";
       toast.error(message);
-      setAiMessages((prev) => [
-        ...prev.slice(0, -1),
-        { type: "error", content: message },
-      ]);
     } finally {
       setGenerating(false);
     }
-  }, [prompt, selectedModel, projectId, files, refreshUser, user]);
+  }, [prompt, projectId, files, refreshUser, user]);
 
   // Deploy project
   const handleDeploy = useCallback(async () => {
     setDeploying(true);
     try {
-      const response = await api.post(`/deploy/${projectId}`);
-      setProject((prev) => ({ ...prev, deployed_url: response.data.deployed_url, status: "deployed" }));
+      const res = await api.post("/project/deploy", { project_id: projectId });
+      setProject((prev) => ({ ...prev, deployed_url: res.data.deployed_url }));
       toast.success("Project deployed!");
-    } catch {
-      toast.error("Deployment failed");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Deployment failed");
     } finally {
       setDeploying(false);
     }
@@ -169,37 +81,30 @@ export default function ProjectPage() {
   // Save files
   const handleSaveFiles = useCallback(async () => {
     try {
-      await api.put(`/projects/${projectId}/files`, files);
+      await api.put("/project/deploy", { project_id: projectId, files });
       toast.success("Files saved");
     } catch {
       toast.error("Failed to save files");
     }
-  }, [files, projectId]);
+  }, [projectId, files]);
 
-  // Copy code
-  const handleCopyCode = useCallback(() => {
-    if (selectedFile && files[selectedFile]) {
-      navigator.clipboard.writeText(files[selectedFile]);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  }, [selectedFile, files]);
-
-  const getFileExtension = (filename) => filename.split(".").pop().toLowerCase();
-  const getFileLanguage = (filename) => {
-    const ext = getFileExtension(filename);
-    const langMap = { js: "javascript", jsx: "javascript", ts: "typescript", tsx: "typescript", json: "json", css: "css", html: "html", md: "markdown", py: "python" };
-    return langMap[ext] || "javascript";
-  };
-
-  if (loading) return <div className="min-h-screen bg-void flex items-center justify-center"><Loader2 className="w-8 h-8 text-electric animate-spin" /></div>;
-
-  const creditsRemaining = user ? user.credits - user.credits_used : 0;
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-void">
+        <Loader2 className="w-8 h-8 text-electric animate-spin" />
+      </div>
+    );
 
   return (
-    <div className="min-h-screen bg-void flex flex-col">
-      {/* Header and Main content unchanged */}
-      {/* ... rest of JSX remains the same ... */}
+    <div className="min-h-screen bg-void p-4">
+      {/* Your UI here */}
+      <Button onClick={handleGenerate} disabled={generating}>
+        {generating ? "Generating..." : "Generate Code"}
+      </Button>
+      <Button onClick={handleDeploy} disabled={deploying}>
+        {deploying ? "Deploying..." : "Deploy Project"}
+      </Button>
+      <Button onClick={handleSaveFiles}>Save Files</Button>
     </div>
   );
 }
