@@ -7,7 +7,10 @@ import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { ArrowLeft, Eye, EyeOff, Loader2, Github } from "lucide-react";
 import Logo from "../components/Logo";
-import api from "../lib/api"; // use axios instance
+import api from "../lib/api";
+
+const BACKEND_URL =
+  process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -28,11 +31,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await api.post("/auth/login", { email, password });
-
-      // Save tokens
-      localStorage.setItem("access_token", res.data.access_token);
-      localStorage.setItem("refresh_token", res.data.refresh_token);
+      await api.post("/auth/login", { email, password });
 
       toast.success("Welcome back!");
       navigate("/dashboard");
@@ -48,7 +47,7 @@ export default function LoginPage() {
   // =====================================================
   const handleGithubLogin = () => {
     setGithubLoading(true);
-    window.location.href = `${process.env.REACT_APP_BACKEND_URL}/api/auth/github`;
+    window.location.href = `${BACKEND_URL}/api/auth/github`;
   };
 
   // =====================================================
@@ -56,7 +55,7 @@ export default function LoginPage() {
   // =====================================================
   const handleGoogleLogin = () => {
     setGoogleLoading(true);
-    window.location.href = `${process.env.REACT_APP_BACKEND_URL}/api/auth/google`;
+    window.location.href = `${BACKEND_URL}/api/auth/google`;
   };
 
   return (
@@ -68,6 +67,7 @@ export default function LoginPage() {
           <Link to="/">
             <Logo size="large" />
           </Link>
+
           <div>
             <h2 className="font-outfit font-bold text-4xl text-white mb-4">
               Build Anything.
@@ -78,6 +78,7 @@ export default function LoginPage() {
               The world's most powerful autonomous AI software engineering platform.
             </p>
           </div>
+
           <p className="text-sm text-zinc-500">© 2025 CursorCode AI</p>
         </div>
       </div>
@@ -101,12 +102,24 @@ export default function LoginPage() {
             Back
           </Link>
 
-          <h1 className="font-outfit font-bold text-3xl text-white mb-2">Welcome back</h1>
-          <p className="text-zinc-400 mb-8">Sign in to your account to continue building</p>
+          <h1 className="font-outfit font-bold text-3xl text-white mb-2">
+            Welcome back
+          </h1>
+          <p className="text-zinc-400 mb-8">
+            Sign in to your account to continue building
+          </p>
 
           {/* GOOGLE LOGIN */}
-          <Button onClick={handleGoogleLogin} disabled={googleLoading} className="w-full h-12 mb-4">
-            {googleLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Continue with Google"}
+          <Button
+            onClick={handleGoogleLogin}
+            disabled={googleLoading}
+            className="w-full h-12 mb-4"
+          >
+            {googleLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              "Continue with Google"
+            )}
           </Button>
 
           {/* GITHUB LOGIN */}
@@ -116,25 +129,26 @@ export default function LoginPage() {
             variant="outline"
             className="w-full h-12 border-white/10 text-white hover:bg-white/5 mb-6"
           >
-            {githubLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Github className="w-5 h-5 mr-2" />}
-            Continue with GitHub
+            {githubLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <>
+                <Github className="w-5 h-5 mr-2" />
+                Continue with GitHub
+              </>
+            )}
           </Button>
-
-          {/* DIVIDER */}
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-void px-4 text-zinc-500">or continue with email</span>
-            </div>
-          </div>
 
           {/* EMAIL FORM */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <Label>Email</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </div>
 
             <div>
@@ -146,7 +160,12 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3">
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3"
+                >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
