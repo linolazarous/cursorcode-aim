@@ -7,7 +7,10 @@ import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { ArrowLeft, Eye, EyeOff, Loader2, CheckCircle2, Github } from "lucide-react";
 import Logo from "../components/Logo";
-import api from "../lib/api"; // <-- use Axios instance
+import api from "../lib/api";
+
+const BACKEND_URL =
+  process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -21,22 +24,16 @@ export default function SignupPage() {
   const [githubLoading, setGithubLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // =====================================================
   // EMAIL SIGNUP
-  // =====================================================
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const res = await api.post("/auth/signup", { name, email, password });
-
-      // Save both access and refresh tokens
-      localStorage.setItem("access_token", res.data.access_token);
-      localStorage.setItem("refresh_token", res.data.refresh_token);
+      await api.post("/auth/signup", { name, email, password });
 
       toast.success("Account created successfully!");
-      navigate("/dashboard");
+      navigate("/login"); // redirect to login since no token returned
     } catch (err) {
       toast.error(err.response?.data?.detail || err.message || "Signup failed");
     } finally {
@@ -44,20 +41,16 @@ export default function SignupPage() {
     }
   };
 
-  // =====================================================
   // GITHUB OAUTH
-  // =====================================================
   const handleGithubSignup = () => {
     setGithubLoading(true);
-    window.location.href = `${process.env.REACT_APP_BACKEND_URL}/api/auth/github`;
+    window.location.href = `${BACKEND_URL}/api/auth/github`;
   };
 
-  // =====================================================
   // GOOGLE OAUTH
-  // =====================================================
   const handleGoogleSignup = () => {
     setGoogleLoading(true);
-    window.location.href = `${process.env.REACT_APP_BACKEND_URL}/api/auth/google`;
+    window.location.href = `${BACKEND_URL}/api/auth/google`;
   };
 
   return (
@@ -117,12 +110,24 @@ export default function SignupPage() {
             Back
           </Link>
 
-          <h1 className="font-outfit font-bold text-3xl text-white mb-2">Create your account</h1>
-          <p className="text-zinc-400 mb-8">Start building with free AI credits</p>
+          <h1 className="font-outfit font-bold text-3xl text-white mb-2">
+            Create your account
+          </h1>
+          <p className="text-zinc-400 mb-8">
+            Start building with free AI credits
+          </p>
 
           {/* GOOGLE */}
-          <Button onClick={handleGoogleSignup} disabled={googleLoading} className="w-full h-12 mb-4">
-            {googleLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Continue with Google"}
+          <Button
+            onClick={handleGoogleSignup}
+            disabled={googleLoading}
+            className="w-full h-12 mb-4"
+          >
+            {googleLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              "Continue with Google"
+            )}
           </Button>
 
           {/* GITHUB */}
@@ -132,30 +137,35 @@ export default function SignupPage() {
             variant="outline"
             className="w-full h-12 mb-6 border-white/10 text-white hover:bg-white/5"
           >
-            {githubLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Github className="w-5 h-5 mr-2" />}
-            Continue with GitHub
+            {githubLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <>
+                <Github className="w-5 h-5 mr-2" />
+                Continue with GitHub
+              </>
+            )}
           </Button>
-
-          {/* DIVIDER */}
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-void px-4 text-zinc-500">or continue with email</span>
-            </div>
-          </div>
 
           {/* EMAIL FORM */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
             </div>
 
             <div>
               <Label>Email</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </div>
 
             <div>
@@ -167,13 +177,21 @@ export default function SignupPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3">
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3"
+                >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
 
-            <Button type="submit" disabled={loading} className="w-full h-12 bg-electric text-white">
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full h-12 bg-electric text-white"
+            >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
