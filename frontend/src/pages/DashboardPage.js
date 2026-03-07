@@ -1,3 +1,4 @@
+// frontend/src/pages/DashboardPage.js
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,6 +15,7 @@ import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
 import { toast } from "sonner";
 import Logo from "../components/Logo";
+import Sidebar from "../components/Sidebar"; // Extracted Sidebar component
 import {
   Plus,
   FolderOpen,
@@ -32,10 +34,8 @@ import {
   Trash2,
   ExternalLink,
   User,
-  Shield,
   Github,
   AlertCircle,
-  Mail,
   Star,
   GitFork,
   Import,
@@ -45,17 +45,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
 } from "../components/ui/dropdown-menu";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
 
 export default function DashboardPage() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +83,6 @@ export default function DashboardPage() {
       toast.error("Project name is required");
       return;
     }
-
     setCreating(true);
     try {
       const response = await api.post("/projects", {
@@ -134,7 +126,6 @@ export default function DashboardPage() {
       toast.error("Please connect your GitHub account first");
       return;
     }
-
     setLoadingRepos(true);
     try {
       const response = await api.get("/github/repos");
@@ -185,172 +176,16 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-void flex">
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-screen w-64 bg-void-paper border-r border-white/5 flex flex-col z-40">
-        {/* Logo */}
-        <div className="p-6 border-b border-white/5">
-          <Link to="/">
-            <Logo size="default" />
-          </Link>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
-          <Link
-            to="/dashboard"
-            className="flex items-center gap-3 px-4 py-3 rounded-lg bg-electric/10 text-electric"
-            data-testid="nav-dashboard"
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="font-medium">Dashboard</span>
-          </Link>
-
-          <Link
-            to="/settings"
-            className="flex items-center gap-3 px-4 py-3 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
-            data-testid="nav-settings"
-          >
-            <Settings className="w-5 h-5" />
-            <span>Settings</span>
-          </Link>
-
-          {user?.is_admin && (
-            <Link
-              to="/admin"
-              className="flex items-center gap-3 px-4 py-3 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
-              data-testid="nav-admin"
-            >
-              <Shield className="w-5 h-5" />
-              <span>Admin</span>
-            </Link>
-          )}
-        </nav>
-
-        {/* GitHub Connection */}
-        <div className="p-4 border-t border-white/5">
-          {user?.github_username ? (
-            <div className="p-3 rounded-lg bg-void-subtle border border-white/5">
-              <div className="flex items-center gap-2 text-sm">
-                <Github className="w-4 h-4 text-white" />
-                <span className="text-white font-medium truncate">
-                  {user.github_username}
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleFetchGitHubRepos}
-                disabled={loadingRepos}
-                className="w-full mt-2 text-zinc-400 hover:text-white"
-                data-testid="import-from-github-btn"
-              >
-                {loadingRepos ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Import className="w-4 h-4 mr-2" />
-                )}
-                Import Repository
-              </Button>
-            </div>
-          ) : (
-            <Button
-              onClick={handleConnectGitHub}
-              variant="outline"
-              className="w-full border-white/10 text-white hover:bg-white/5"
-              data-testid="connect-github-btn"
-            >
-              <Github className="w-4 h-4 mr-2" />
-              Connect GitHub
-            </Button>
-          )}
-        </div>
-
-        {/* Credits Card */}
-        <div className="p-4 border-t border-white/5">
-          <div className="p-4 rounded-lg bg-void-subtle border border-white/5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-zinc-400">AI Credits</span>
-              <Zap className="w-4 h-4 text-electric" />
-            </div>
-            <div className="text-2xl font-outfit font-bold text-white mb-2">
-              {creditsRemaining}
-              <span className="text-sm font-normal text-zinc-500">
-                /{user?.credits}
-              </span>
-            </div>
-            <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-              <div
-                className="h-full bg-electric transition-all"
-                style={{ width: `${creditsPercentage}%` }}
-              />
-            </div>
-            <Link to="/pricing">
-              <Button
-                variant="link"
-                className="text-electric p-0 h-auto mt-2 text-sm"
-                data-testid="upgrade-plan-btn"
-              >
-                Upgrade Plan <ChevronRight className="w-4 h-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* User Menu */}
-        <div className="p-4 border-t border-white/5">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors"
-                data-testid="user-menu-trigger"
-              >
-                {user?.avatar_url ? (
-                  <img
-                    src={user.avatar_url}
-                    alt={user.name}
-                    className="w-8 h-8 rounded-full"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-electric/20 flex items-center justify-center">
-                    <User className="w-4 h-4 text-electric" />
-                  </div>
-                )}
-                <div className="flex-1 text-left">
-                  <p className="text-sm font-medium text-white truncate">
-                    {user?.name}
-                  </p>
-                  <p className="text-xs text-zinc-500 capitalize">{user?.plan}</p>
-                </div>
-                <MoreVertical className="w-4 h-4 text-zinc-500" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 bg-void-paper border-white/10">
-              <DropdownMenuItem
-                onClick={() => navigate("/settings")}
-                className="text-zinc-300 focus:text-white focus:bg-white/5"
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => navigate("/pricing")}
-                className="text-zinc-300 focus:text-white focus:bg-white/5"
-              >
-                <CreditCard className="w-4 h-4 mr-2" />
-                Billing
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-white/5" />
-              <DropdownMenuItem
-                onClick={logout}
-                className="text-red-400 focus:text-red-300 focus:bg-red-500/10"
-                data-testid="logout-btn"
-              >
-                <LogOut className="w-4 h-4 mr-2" />
-                Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </aside>
+      <Sidebar
+        user={user}
+        logout={logout}
+        creditsRemaining={creditsRemaining}
+        creditsPercentage={creditsPercentage}
+        onUpgrade={() => navigate("/pricing")}
+        onConnectGitHub={handleConnectGitHub}
+        onImportGitHub={handleFetchGitHubRepos}
+        githubLoading={loadingRepos}
+      />
 
       {/* Main Content */}
       <main className="flex-1 ml-64">
@@ -369,9 +204,7 @@ export default function DashboardPage() {
                 size="sm"
                 onClick={handleResendVerification}
                 className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10"
-                data-testid="resend-verification-btn"
               >
-                <Mail className="w-4 h-4 mr-2" />
                 Resend Email
               </Button>
             </div>
@@ -399,16 +232,12 @@ export default function DashboardPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10 w-64 bg-void-subtle border-white/10 text-white placeholder:text-zinc-500 h-10"
-                  data-testid="search-projects-input"
                 />
               </div>
 
               <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button
-                    className="bg-electric hover:bg-electric/90 text-white shadow-glow"
-                    data-testid="new-project-btn"
-                  >
+                  <Button className="bg-electric hover:bg-electric/90 text-white shadow-glow">
                     <Plus className="w-4 h-4 mr-2" />
                     New Project
                   </Button>
@@ -421,36 +250,29 @@ export default function DashboardPage() {
                   </DialogHeader>
                   <form onSubmit={handleCreateProject} className="space-y-4 mt-4">
                     <div className="space-y-2">
-                      <label htmlFor="project-name" className="text-sm text-white">
-                        Project Name
-                      </label>
+                      <label className="text-sm text-white">Project Name</label>
                       <Input
-                        id="project-name"
                         placeholder="My Awesome App"
                         value={newProjectName}
                         onChange={(e) => setNewProjectName(e.target.value)}
                         className="bg-void-subtle border-white/10 text-white placeholder:text-zinc-500"
-                        data-testid="project-name-input"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label htmlFor="project-description" className="text-sm text-white">
+                      <label className="text-sm text-white">
                         Description (optional)
                       </label>
                       <Input
-                        id="project-description"
                         placeholder="A brief description of your project"
                         value={newProjectDescription}
                         onChange={(e) => setNewProjectDescription(e.target.value)}
                         className="bg-void-subtle border-white/10 text-white placeholder:text-zinc-500"
-                        data-testid="project-description-input"
                       />
                     </div>
                     <Button
                       type="submit"
                       disabled={creating}
                       className="w-full bg-electric hover:bg-electric/90 text-white"
-                      data-testid="create-project-submit"
                     >
                       {creating ? (
                         <>
@@ -482,7 +304,9 @@ export default function DashboardPage() {
             </DialogHeader>
             <div className="flex-1 overflow-y-auto mt-4 space-y-2">
               {githubRepos.length === 0 ? (
-                <p className="text-zinc-400 text-center py-8">No repositories found</p>
+                <p className="text-zinc-400 text-center py-8">
+                  No repositories found
+                </p>
               ) : (
                 githubRepos.map((repo) => (
                   <div
@@ -509,9 +333,7 @@ export default function DashboardPage() {
                             <GitFork className="w-3 h-3" />
                             {repo.forks_count}
                           </div>
-                          {repo.private && (
-                            <span className="text-yellow-500">Private</span>
-                          )}
+                          {repo.private && <span className="text-yellow-500">Private</span>}
                         </div>
                       </div>
                       <Button
@@ -519,7 +341,6 @@ export default function DashboardPage() {
                         onClick={() => handleImportRepo(repo.full_name)}
                         disabled={importing === repo.full_name}
                         className="ml-4 bg-electric hover:bg-electric/90 text-white"
-                        data-testid={`import-repo-${repo.name}`}
                       >
                         {importing === repo.full_name ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -556,16 +377,12 @@ export default function DashboardPage() {
                   <h3 className="font-outfit text-xl text-white mb-2">
                     No projects found
                   </h3>
-                  <p className="text-zinc-400">
-                    No projects match "{searchQuery}"
-                  </p>
+                  <p className="text-zinc-400">No projects match "{searchQuery}"</p>
                 </>
               ) : (
                 <>
                   <FolderOpen className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-                  <h3 className="font-outfit text-xl text-white mb-2">
-                    No projects yet
-                  </h3>
+                  <h3 className="font-outfit text-xl text-white mb-2">No projects yet</h3>
                   <p className="text-zinc-400 mb-6">
                     Create your first project or import from GitHub
                   </p>
@@ -573,7 +390,6 @@ export default function DashboardPage() {
                     <Button
                       onClick={() => setCreateDialogOpen(true)}
                       className="bg-electric hover:bg-electric/90 text-white shadow-glow"
-                      data-testid="empty-new-project-btn"
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Create Project
@@ -604,10 +420,8 @@ export default function DashboardPage() {
                     transition={{ delay: index * 0.05 }}
                     className="group relative p-6 rounded-xl bg-void-paper border border-white/5 hover:border-electric/30 transition-colors cursor-pointer"
                     onClick={() => navigate(`/project/${project.id}`)}
-                    data-testid={`project-card-${project.id}`}
                   >
                     <div className="absolute inset-0 rounded-xl bg-electric/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-
                     <div className="relative z-10">
                       <div className="flex items-start justify-between mb-4">
                         <div className="w-10 h-10 rounded-lg bg-electric/10 flex items-center justify-center">
@@ -617,7 +431,6 @@ export default function DashboardPage() {
                             <Code2 className="w-5 h-5 text-electric" />
                           )}
                         </div>
-
                         <DropdownMenu>
                           <DropdownMenuTrigger
                             asChild
