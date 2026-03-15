@@ -82,7 +82,6 @@ app = FastAPI(title="CursorCode AI", version="1.0", docs_url="/docs")
 # CORS CONFIGURATION
 # =====================================================
 origins = [FRONTEND_URL, "http://localhost:3000"]
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -171,7 +170,8 @@ def signup(data: SignupRequest):
     token = str(uuid4())
     verification_collection.insert_one({"email": data.email, "token": token, "created": datetime.utcnow()})
 
-    # TODO: Send email with verification link (FRONTEND_URL + "/verify-email?token=" + token)
+    # TODO: Send email with verification link
+    # e.g., FRONTEND_URL + "/verify-email?token=" + token
 
     access_token = create_access_token({"email": data.email})
     refresh_token = create_refresh_token({"email": data.email})
@@ -201,7 +201,6 @@ def verify_email(token: str):
 
     users_collection.update_one({"email": record["email"]}, {"$set": {"is_verified": True}})
     verification_collection.delete_one({"token": token})
-
     return JSONResponse({"message": "Email verified successfully!"})
 
 # =====================================================
@@ -240,13 +239,16 @@ async def github_login(request: Request):
 @app.get("/api/auth/github/callback")
 async def github_callback(request: Request):
     token = await oauth.github.authorize_access_token(request)
-    resp = await oauth.github.get('user', token=token)
-    profile = resp.json()
+    profile = await oauth.github.get('user', token=token)
+    profile = profile.json()
     email = profile.get("email") or f"{profile['login']}@github.com"
     name = profile.get("name") or profile.get("login")
     user = users_collection.find_one({"email": email})
     if not user:
-        users_collection.insert_one({"name": name, "email": email, "password": None, "created": datetime.utcnow(), "plan": "free", "is_verified": True})
+        users_collection.insert_one({
+            "name": name, "email": email, "password": None,
+            "created": datetime.utcnow(), "plan": "free", "is_verified": True
+        })
     access = create_access_token({"email": email})
     refresh = create_refresh_token({"email": email})
     return RedirectResponse(f"{FRONTEND_URL}/auth/github/callback?access={access}&refresh={refresh}")
@@ -259,13 +261,16 @@ async def google_login(request: Request):
 @app.get("/api/auth/google/callback")
 async def google_callback(request: Request):
     token = await oauth.google.authorize_access_token(request)
-    resp = await oauth.google.get('userinfo', token=token)
-    profile = resp.json()
+    profile = await oauth.google.get('userinfo', token=token)
+    profile = profile.json()
     email = profile.get("email")
     name = profile.get("name") or email.split("@")[0]
     user = users_collection.find_one({"email": email})
     if not user:
-        users_collection.insert_one({"name": name, "email": email, "password": None, "created": datetime.utcnow(), "plan": "free", "is_verified": True})
+        users_collection.insert_one({
+            "name": name, "email": email, "password": None,
+            "created": datetime.utcnow(), "plan": "free", "is_verified": True
+        })
     access = create_access_token({"email": email})
     refresh = create_refresh_token({"email": email})
     return RedirectResponse(f"{FRONTEND_URL}/auth/google/callback?access={access}&refresh={refresh}")
@@ -282,7 +287,7 @@ async def deploy_project(prompt: str, user=Depends(get_current_user)):
         return {"preview_url": preview_url, "details": project_result}
     except Exception as e:
         logger.error("Deployment error")
-        logger.error(e)
+        logger.exception(e)
         raise HTTPException(status_code=500, detail="Project deployment failed")
 
 # =====================================================
@@ -296,5 +301,13 @@ async def project_stream(project_id: str = Query(...), prompt: str = Query(...),
         return event_source
     except Exception as e:
         logger.error("Streaming error")
-        logger.error(e)
+        logger.exception(e)
         raise HTTPException(status_code=500, detail="Streaming failed")
+
+# =====================================================
+# RUN SERVER (Render PORT)
+# =====================================================
+if __name__ == "__main__":
+    import uvicorn
+    PORT = int(os.getenv("PORT", 10000))
+    uvicorn.run("backend.server:app", host="0.0.0.0", port=PORT, reload=False)
