@@ -9,17 +9,17 @@ import jwt
 import stripe
 import logging
 from datetime import datetime, timedelta
-
 from fastapi import FastAPI, HTTPException, Depends, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from authlib.integrations.starlette_client import OAuth
+from uuid import uuid4
 
-# Absolute import of orchestrator
+# Orchestrator
 from backend.orchestrator import orchestrate_project, stream_orchestration_sse
 from backend.config import (
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
@@ -31,7 +31,6 @@ from backend.config import (
 # Load Environment
 # =====================================================
 load_dotenv()
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cursorcode")
 
@@ -67,6 +66,7 @@ db = client[DB_NAME]
 users_collection = db["users"]
 analytics_collection = db["analytics"]
 usage_collection = db["ai_usage"]
+verification_collection = db["email_verifications"]
 
 # =====================================================
 # PASSWORD HASHING
@@ -81,10 +81,7 @@ app = FastAPI(title="CursorCode AI", version="1.0", docs_url="/docs")
 # =====================================================
 # CORS CONFIGURATION
 # =====================================================
-origins = [
-    FRONTEND_URL,
-    "http://localhost:3000"
-]
+origins = [FRONTEND_URL, "http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -99,11 +96,7 @@ app.add_middleware(
 # =====================================================
 @app.get("/")
 def root():
-    return {
-        "status": "CursorCode AI backend running",
-        "version": "1.0",
-        "docs": "/docs"
-    }
+    return {"status": "CursorCode AI backend running", "version": "1.0", "docs": "/docs"}
 
 @app.get("/health")
 def health():
@@ -169,16 +162,20 @@ def signup(data: SignupRequest):
         "email": data.email,
         "password": hashed_password,
         "created": datetime.utcnow(),
-        "plan": "free"
+        "plan": "free",
+        "is_verified": False
     }
     users_collection.insert_one(user)
+
+    # create verification token
+    token = str(uuid4())
+    verification_collection.insert_one({"email": data.email, "token": token, "created": datetime.utcnow()})
+
+    # TODO: Send email with verification link (FRONTEND_URL + "/verify-email?token=" + token)
+
     access_token = create_access_token({"email": data.email})
     refresh_token = create_refresh_token({"email": data.email})
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "user": {"name": data.name, "email": data.email}
-    }
+    return {"access_token": access_token, "refresh_token": refresh_token, "user": {"name": data.name, "email": data.email}}
 
 @app.post("/api/auth/login")
 def login(data: LoginRequest):
@@ -187,22 +184,31 @@ def login(data: LoginRequest):
         raise HTTPException(401, "Invalid credentials")
     access_token = create_access_token({"email": user["email"]})
     refresh_token = create_refresh_token({"email": user["email"]})
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "user": {"name": user["name"], "email": user["email"]}
-    }
+    return {"access_token": access_token, "refresh_token": refresh_token, "user": {"name": user["name"], "email": user["email"]}}
 
 @app.get("/api/auth/me")
 def get_me(user=Depends(get_current_user)):
-    return {"name": user["name"], "email": user["email"]}
+    return {"name": user["name"], "email": user["email"], "is_verified": user.get("is_verified", False)}
+
+# =====================================================
+# EMAIL VERIFICATION
+# =====================================================
+@app.get("/api/auth/verify-email")
+def verify_email(token: str):
+    record = verification_collection.find_one({"token": token})
+    if not record:
+        raise HTTPException(400, "Invalid or expired verification link")
+
+    users_collection.update_one({"email": record["email"]}, {"$set": {"is_verified": True}})
+    verification_collection.delete_one({"token": token})
+
+    return JSONResponse({"message": "Email verified successfully!"})
 
 # =====================================================
 # OAUTH SETUP
 # =====================================================
 oauth = OAuth()
 
-# GitHub OAuth
 oauth.register(
     name='github',
     client_id=GITHUB_CLIENT_ID,
@@ -213,7 +219,6 @@ oauth.register(
     client_kwargs={'scope': 'user:email'},
 )
 
-# Google OAuth
 oauth.register(
     name='google',
     client_id=GOOGLE_CLIENT_ID,
@@ -227,8 +232,7 @@ oauth.register(
 # =====================================================
 # OAUTH ROUTES
 # =====================================================
-# GitHub
-@app.get("/api/auth/github/login")
+@app.get("/api/auth/github")
 async def github_login(request: Request):
     redirect_uri = f"{FRONTEND_URL}/auth/github/callback"
     return await oauth.github.authorize_redirect(request, redirect_uri)
@@ -242,19 +246,12 @@ async def github_callback(request: Request):
     name = profile.get("name") or profile.get("login")
     user = users_collection.find_one({"email": email})
     if not user:
-        users_collection.insert_one({
-            "name": name,
-            "email": email,
-            "password": None,
-            "created": datetime.utcnow(),
-            "plan": "free"
-        })
+        users_collection.insert_one({"name": name, "email": email, "password": None, "created": datetime.utcnow(), "plan": "free", "is_verified": True})
     access = create_access_token({"email": email})
     refresh = create_refresh_token({"email": email})
-    return RedirectResponse(f"{FRONTEND_URL}/oauth-success?access={access}&refresh={refresh}")
+    return RedirectResponse(f"{FRONTEND_URL}/auth/github/callback?access={access}&refresh={refresh}")
 
-# Google
-@app.get("/api/auth/google/login")
+@app.get("/api/auth/google")
 async def google_login(request: Request):
     redirect_uri = f"{FRONTEND_URL}/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
@@ -268,16 +265,10 @@ async def google_callback(request: Request):
     name = profile.get("name") or email.split("@")[0]
     user = users_collection.find_one({"email": email})
     if not user:
-        users_collection.insert_one({
-            "name": name,
-            "email": email,
-            "password": None,
-            "created": datetime.utcnow(),
-            "plan": "free"
-        })
+        users_collection.insert_one({"name": name, "email": email, "password": None, "created": datetime.utcnow(), "plan": "free", "is_verified": True})
     access = create_access_token({"email": email})
     refresh = create_refresh_token({"email": email})
-    return RedirectResponse(f"{FRONTEND_URL}/oauth-success?access={access}&refresh={refresh}")
+    return RedirectResponse(f"{FRONTEND_URL}/auth/google/callback?access={access}&refresh={refresh}")
 
 # =====================================================
 # AI PROJECT DEPLOYMENT
