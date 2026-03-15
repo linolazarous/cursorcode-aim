@@ -1,6 +1,7 @@
 """
 CursorCode AI - FastAPI Backend Server
-Render-ready with absolute imports and SSE streaming
+Production-ready for Render deployment
+Supports JWT auth, MongoDB, Stripe, and SSE orchestration
 """
 
 import os
@@ -19,48 +20,67 @@ from dotenv import load_dotenv
 # Absolute import of orchestrator
 from backend.orchestrator import orchestrate_project, stream_orchestration_sse
 
+
 # =====================================================
-# Load environment
+# Load Environment
 # =====================================================
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cursorcode")
 
+
 # =====================================================
-# ENV VARIABLES
+# ENVIRONMENT VARIABLES
 # =====================================================
 MONGO_URL = os.getenv("MONGO_URL")
 DB_NAME = os.getenv("DB_NAME", "cursorcode")
 
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "secret")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super_secret_key")
 JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET", "refresh_secret")
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
+# Frontend domain (IMPORTANT FOR CORS)
+FRONTEND_URL = os.getenv(
+    "FRONTEND_URL",
+    "https://cursorcode-1ctftmllx-cursorcode-ais-projects.vercel.app"
+)
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 DEFAULT_MODEL = os.getenv("DEFAULT_XAI_MODEL", "grok-4-latest")
 
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
-stripe.api_key = STRIPE_SECRET_KEY
+
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
+
 
 # =====================================================
-# DATABASE
+# DATABASE CONNECTION
 # =====================================================
-client = MongoClient(MONGO_URL)
+try:
+    client = MongoClient(MONGO_URL)
+    client.admin.command("ping")
+    logger.info("MongoDB connected successfully")
+except Exception as e:
+    logger.error("MongoDB connection failed")
+    logger.error(e)
+    raise e
+
 db = client[DB_NAME]
 
 users_collection = db["users"]
 analytics_collection = db["analytics"]
 usage_collection = db["ai_usage"]
 
+
 # =====================================================
 # PASSWORD HASHING
 # =====================================================
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 # =====================================================
-# FASTAPI APP
+# FASTAPI APPLICATION
 # =====================================================
 app = FastAPI(
     title="CursorCode AI",
@@ -68,16 +88,26 @@ app = FastAPI(
     docs_url="/docs"
 )
 
+
+# =====================================================
+# CORS CONFIGURATION
+# =====================================================
+origins = [
+    FRONTEND_URL,
+    "http://localhost:3000"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 # =====================================================
-# ROOT HEALTH ENDPOINT (NEW)
+# ROOT ENDPOINT
 # =====================================================
 @app.get("/")
 def root():
@@ -87,8 +117,17 @@ def root():
         "docs": "/docs"
     }
 
+
 # =====================================================
-# MODELS
+# HEALTH CHECK (Render uses this)
+# =====================================================
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+# =====================================================
+# REQUEST MODELS
 # =====================================================
 class SignupRequest(BaseModel):
     name: str
@@ -115,12 +154,14 @@ def verify_password(password: str, hashed: str):
 def create_access_token(data: dict):
     payload = data.copy()
     payload["exp"] = datetime.utcnow() + timedelta(hours=2)
+
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
 
 
 def create_refresh_token(data: dict):
     payload = data.copy()
     payload["exp"] = datetime.utcnow() + timedelta(days=30)
+
     return jwt.encode(payload, JWT_REFRESH_SECRET, algorithm="HS256")
 
 
@@ -130,14 +171,19 @@ def get_current_user(request: Request):
     if not auth_header:
         raise HTTPException(status_code=401, detail="Missing token")
 
-    token = auth_header.split(" ")[1]
-
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
+        token = auth_header.split(" ")[1]
+
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=["HS256"]
+        )
+
         user = users_collection.find_one({"email": payload["email"]})
 
         if not user:
-            raise HTTPException(status_code=401)
+            raise HTTPException(status_code=401, detail="User not found")
 
         return user
 
@@ -157,24 +203,24 @@ def signup(data: SignupRequest):
     if users_collection.find_one({"email": data.email}):
         raise HTTPException(400, "User already exists")
 
-    hashed = hash_password(data.password)
+    hashed_password = hash_password(data.password)
 
     user = {
         "name": data.name,
         "email": data.email,
-        "password": hashed,
+        "password": hashed_password,
         "created": datetime.utcnow(),
         "plan": "free"
     }
 
     users_collection.insert_one(user)
 
-    access = create_access_token({"email": data.email})
-    refresh = create_refresh_token({"email": data.email})
+    access_token = create_access_token({"email": data.email})
+    refresh_token = create_refresh_token({"email": data.email})
 
     return {
-        "access_token": access,
-        "refresh_token": refresh,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
         "user": {
             "name": data.name,
             "email": data.email
@@ -190,15 +236,18 @@ def login(data: LoginRequest):
 
     user = users_collection.find_one({"email": data.email})
 
-    if not user or not verify_password(data.password, user["password"]):
+    if not user:
         raise HTTPException(401, "Invalid credentials")
 
-    access = create_access_token({"email": data.email})
-    refresh = create_refresh_token({"email": data.email})
+    if not verify_password(data.password, user["password"]):
+        raise HTTPException(401, "Invalid credentials")
+
+    access_token = create_access_token({"email": user["email"]})
+    refresh_token = create_refresh_token({"email": user["email"]})
 
     return {
-        "access_token": access,
-        "refresh_token": refresh,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
         "user": {
             "name": user["name"],
             "email": user["email"]
@@ -210,7 +259,7 @@ def login(data: LoginRequest):
 # CURRENT USER
 # =====================================================
 @app.get("/api/auth/me")
-def me(user=Depends(get_current_user)):
+def get_me(user=Depends(get_current_user)):
     return {
         "name": user["name"],
         "email": user["email"]
@@ -223,22 +272,33 @@ def me(user=Depends(get_current_user)):
 @app.post("/api/project/deploy")
 async def deploy_project(prompt: str, user=Depends(get_current_user)):
     """
-    Generate, build, and deploy the project.
-    Returns live preview URL.
+    Generate, build and deploy a project using AI orchestration
     """
 
-    project_result = await orchestrate_project(
-        XAI_API_KEY,
-        prompt,
-        user["email"]
-    )
+    logger.info(f"User {user['email']} requested project deployment")
 
-    preview_url = project_result.get("preview_url", "Deployment failed")
+    try:
+        project_result = await orchestrate_project(
+            XAI_API_KEY,
+            prompt,
+            user["email"]
+        )
 
-    return {
-        "preview_url": preview_url,
-        "details": project_result
-    }
+        preview_url = project_result.get("preview_url", "Deployment failed")
+
+        return {
+            "preview_url": preview_url,
+            "details": project_result
+        }
+
+    except Exception as e:
+        logger.error("Deployment error")
+        logger.error(e)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Project deployment failed"
+        )
 
 
 # =====================================================
@@ -251,14 +311,26 @@ async def project_stream(
     user=Depends(get_current_user)
 ):
     """
-    Stream orchestration results using Server-Sent Events
+    Stream orchestration events using Server Sent Events
     """
 
-    event_source = await stream_orchestration_sse(
-        project_id,
-        prompt,
-        XAI_API_KEY,
-        user["email"]
-    )
+    logger.info(f"Streaming build for project {project_id}")
 
-    return event_source
+    try:
+        event_source = await stream_orchestration_sse(
+            project_id,
+            prompt,
+            XAI_API_KEY,
+            user["email"]
+        )
+
+        return event_source
+
+    except Exception as e:
+        logger.error("Streaming error")
+        logger.error(e)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Streaming failed"
+        )
