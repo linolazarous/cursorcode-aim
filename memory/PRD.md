@@ -7,71 +7,53 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
 - **Frontend:** React 18, TailwindCSS, Shadcn/UI, Framer Motion, Lucide Icons, Monaco Editor, Recharts
 - **Backend:** FastAPI, Motor (async MongoDB), JWT Auth, bcrypt, python-jose
 - **Database:** MongoDB
-- **3rd Party:** xAI Grok (AI generation), Stripe (payments), SendGrid (email), GitHub OAuth
+- **3rd Party:** xAI Grok (AI), Stripe (payments), SendGrid (email), GitHub OAuth, Emergent Google Auth
 
-## Architecture
-```
-/app/backend/
-  server.py              - Main FastAPI app (all routes, auth, CRUD, templates, AI)
-  ai_agents.py           - Multi-agent AI system (6 agents)
-  orchestrator.py        - AI project orchestration pipeline
-  ai_memory.py           - AI context memory (MongoDB-backed)
-  ai_streaming.py        - SSE streaming for AI responses
-  ai_metrics.py          - Usage tracking
-  ai_rate_limiter.py     - Plan-based rate limiting
-  ai_security.py, ai_file_manager.py, ai_repo_builder.py, ai_planner.py
-  ai_task_graph.py, code_executor.py, ai_code_reviewer.py, ai_debugger.py
-  ai_autofix_engine.py, ai_refactor_engine.py, ai_test_generator.py
-  ai_project_architect.py, utils.py
-/app/frontend/src/
-  pages/                 - LandingPage, LoginPage, SignupPage, DashboardPage, ProjectPage,
-                           SettingsPage, PricingPage, AdminPage, TemplatesPage, TemplatePreviewPage
-  components/            - Logo, Sidebar, DemoVideoModal, ui/ (shadcn)
-  components/mockups/    - SaaSMockup, EcommerceMockup, BlogMockup, ApiMockup,
-                           PortfolioMockup, ChatMockup, AiMockup, MobileMockup
-  context/               - AuthContext
-  lib/                   - api.js (axios instance)
-```
-
-## Implemented Features (v2.1)
+## Implemented Features (v2.2)
 
 ### Core Platform
 - [x] Landing page with hero, features, pricing, testimonials
-- [x] Watch Demo video modal (real 11MB MP4 uploaded)
-- [x] Real logo.png (1.7MB uploaded)
-- [x] JWT auth (signup, login, refresh), GitHub OAuth
+- [x] Watch Demo video modal (real 11MB MP4)
+- [x] Real logo.png
+- [x] JWT auth (signup, login, refresh)
+- [x] **Google OAuth** via Emergent-managed Auth (auth.emergentagent.com)
+- [x] **GitHub OAuth** with proper redirect flow (needs user's keys)
 - [x] User dashboard with sidebar navigation
-- [x] Project CRUD with AI code generation workspace (Monaco editor)
+- [x] Project CRUD with AI workspace (Monaco editor)
 - [x] Multi-agent AI build pipeline (6 agents)
 - [x] 5 subscription plans with Stripe checkout
 - [x] Credit system with rate limiting
 - [x] Simulated deployments, Admin dashboard, Settings page
 
-### Template System (v2.1)
-- [x] 8 project templates: SaaS Dashboard, E-Commerce, Blog, REST API, Portfolio, Real-Time Chat, AI Assistant, Mobile App
-- [x] Template Gallery page with search, category filters, complexity badges
+### Template System
+- [x] 8 project templates (SaaS, E-Commerce, Blog, API, Portfolio, Chat, AI Assistant, Mobile)
+- [x] Template Gallery with search, category filters, complexity badges
 - [x] **Template Preview Mode** - interactive mockups in browser chrome frame
 - [x] Desktop/mobile viewport toggle
-- [x] Template details sidebar with tech stack, features, credits info
-- [x] One-click "Use Template" creates project with pre-filled AI prompt
-- [x] 8 unique mockup components with realistic UI
+- [x] One-click "Use Template" creates project with pre-filled prompt
+
+### Auth System
+- [x] Email/password signup & login with JWT
+- [x] Google OAuth via Emergent Auth (session exchange → JWT)
+- [x] GitHub OAuth (redirect → callback → JWT) - needs user's CLIENT_ID/SECRET
+- [x] Token refresh
+- [x] Email verification flow
 
 ### Mocked/Demo Mode
-- AI generation returns demo responses (needs XAI_API_KEY)
-- Stripe checkout returns demo URLs (needs STRIPE_SECRET_KEY)
-- Email sending skipped (needs SENDGRID_API_KEY)
-- GitHub OAuth (needs GITHUB_OAUTH_CLIENT_ID/SECRET)
+- AI generation: demo responses (needs XAI_API_KEY)
+- Stripe: demo URLs (needs STRIPE_SECRET_KEY)
+- SendGrid: skipped (needs SENDGRID_API_KEY)
+- GitHub OAuth: error msg (needs CLIENT_ID/SECRET)
 
 ## API Endpoints
-- Auth: POST signup, login, refresh | GET me, verify-email, github
+- Auth: POST signup, login, refresh, google/session, github/callback | GET me, verify-email, github
 - User: PUT /api/users/me
 - Projects: CRUD /api/projects
-- Templates: GET /api/templates, GET /api/templates/:id, POST /api/templates/:id/create
+- Templates: GET /api/templates, /api/templates/:id, POST /api/templates/:id/create
 - AI: POST generate, build | GET models, stream
 - Deploy: POST /api/deploy/:id | GET/DELETE deployments
 - Subscriptions: POST create-checkout, webhook | GET current
 - Admin: GET stats, users, usage
-- Health: GET /api/health
 
 ## Test Credentials
 - email: test@cursorcode.ai, password: Test123456!
@@ -79,10 +61,13 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
 ## Testing Status (March 17, 2026)
 - Iteration 3: 16/16 core features (100%)
 - Iteration 4: 17/17 templates gallery (100%)
-- Iteration 5: 25/25 template preview mode (100%)
+- Iteration 5: 25/25 template preview (100%)
+- Iteration 6: 11/11 OAuth auth (100%)
 
 ## Pending / Backlog
-- Configure real API keys (xAI, Stripe, SendGrid, GitHub)
+- Configure xAI API key for real AI generation
+- Configure Stripe keys for real payments
+- Configure SendGrid for real emails
+- Configure GitHub OAuth keys
 - Real file hosting for deployments
-- Email verification blocking flow
-- Community/user-submitted templates
+- Community templates
