@@ -45,14 +45,24 @@ export const AuthProvider = ({ children }) => {
     fetchUser();
   }, [fetchUser]);
 
-  const login = async (email, password) => {
+  const login = async (email, password, totpCode = null) => {
+    if (totpCode) {
+      const response = await api.post("/auth/login-2fa", { email, password, totp_code: totpCode });
+      const { access_token, refresh_token, user: userData } = response.data;
+      localStorage.setItem("access_token", access_token);
+      localStorage.setItem("refresh_token", refresh_token);
+      setUser(userData);
+      return userData;
+    }
     const response = await api.post("/auth/login", { email, password });
+    // Handle 2FA required response
+    if (response.data.requires_2fa) {
+      return { requires_2fa: true, email: response.data.email };
+    }
     const { access_token, refresh_token, user: userData } = response.data;
-    
     localStorage.setItem("access_token", access_token);
     localStorage.setItem("refresh_token", refresh_token);
     setUser(userData);
-    
     return userData;
   };
 

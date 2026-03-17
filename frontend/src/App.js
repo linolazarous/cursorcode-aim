@@ -6,6 +6,8 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import DashboardPage from "./pages/DashboardPage";
 import ProjectPage from "./pages/ProjectPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -55,6 +57,8 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />

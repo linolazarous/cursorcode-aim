@@ -13,6 +13,7 @@ import {
   CreditCard,
   Key,
   Shield,
+  ShieldCheck,
   LayoutDashboard,
   Settings,
   LogOut,
@@ -24,6 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import Logo from "../components/Logo";
+import TwoFactorSetup from "../components/TwoFactorSetup";
 
 export default function SettingsPage() {
   const { user, logout, refreshUser } = useAuth();
@@ -254,6 +256,11 @@ export default function SettingsPage() {
                 API Keys
               </TabsTrigger>
 
+              <TabsTrigger value="security">
+                <ShieldCheck className="w-4 h-4 mr-2" />
+                Security
+              </TabsTrigger>
+
             </TabsList>
 
             {/* ACCOUNT */}
@@ -410,6 +417,19 @@ export default function SettingsPage() {
 
               </div>
 
+            </TabsContent>
+
+            {/* SECURITY / 2FA */}
+            <TabsContent value="security">
+              <div className="space-y-6">
+                <div className="p-6 rounded-xl bg-void-paper border border-white/5">
+                  <h3 className="text-lg font-semibold text-white mb-6">Security Settings</h3>
+                  <TwoFactorSetup
+                    isEnabled={user?.totp_enabled || false}
+                    onStatusChange={async () => { await refreshUser(); }}
+                  />
+                </div>
+              </div>
             </TabsContent>
 
           </Tabs>

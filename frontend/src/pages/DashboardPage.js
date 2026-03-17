@@ -16,6 +16,7 @@ import api from "../lib/api";
 import { toast } from "sonner";
 import Logo from "../components/Logo";
 import Sidebar from "../components/Sidebar"; // Extracted Sidebar component
+import CreditMeter from "../components/CreditMeter";
 import {
   Plus,
   FolderOpen,
@@ -224,6 +225,13 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex items-center gap-4">
+              {user && (
+                <CreditMeter
+                  credits={user.credits}
+                  creditsUsed={user.credits_used}
+                  plan={user.plan}
+                />
+              )}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                 <Input

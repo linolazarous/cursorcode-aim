@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "../components/ui/button";
@@ -18,6 +18,8 @@ import {
   Menu,
   X,
   Play,
+  ShieldCheck,
+  Lock,
 } from "lucide-react";
 import Logo from "../components/Logo";
 import DemoVideoModal from "../components/DemoVideoModal";
@@ -180,16 +182,22 @@ export default function LandingPage() {
                 Features
               </a>
               <a
+                href="#architecture"
+                className="text-sm text-zinc-400 hover:text-white transition-colors"
+              >
+                Architecture
+              </a>
+              <a
+                href="#security"
+                className="text-sm text-zinc-400 hover:text-white transition-colors"
+              >
+                Security
+              </a>
+              <a
                 href="#pricing"
                 className="text-sm text-zinc-400 hover:text-white transition-colors"
               >
                 Pricing
-              </a>
-              <a
-                href="#"
-                className="text-sm text-zinc-400 hover:text-white transition-colors"
-              >
-                Docs
               </a>
             </div>
 
@@ -551,6 +559,101 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Multi-Agent Architecture Visualization */}
+      <section id="architecture" className="py-20 lg:py-32 relative border-t border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-left mb-16"
+          >
+            <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white mb-4">
+              Multi-Agent Architecture
+            </h2>
+            <p className="text-lg text-zinc-400 max-w-2xl">
+              Seven specialized AI agents work in concert to design, build, test, secure, and deploy your application.
+            </p>
+          </motion.div>
+          <ArchitectureGraph />
+        </div>
+      </section>
+
+      {/* Live Deploy Terminal */}
+      <section id="demo-terminal" className="py-20 lg:py-32 relative border-t border-white/5 bg-void-paper/30">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-12"
+          >
+            <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white mb-4">
+              Live Autonomous Deployment
+            </h2>
+            <p className="text-lg text-zinc-400">
+              Watch how CursorCode AI builds and deploys your app in real-time.
+            </p>
+          </motion.div>
+          <DeployTerminal />
+        </div>
+      </section>
+
+      {/* Enterprise Compliance */}
+      <section id="security" className="py-20 lg:py-32 relative border-t border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white mb-4">
+              Enterprise-Grade Security
+            </h2>
+            <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+              Built for teams that demand the highest standards of security and compliance.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                icon: ShieldCheck,
+                title: "SOC 2 Ready Architecture",
+                desc: "Infrastructure designed for SOC 2 Type II readiness with complete audit workflows and evidence collection.",
+              },
+              {
+                icon: Lock,
+                title: "GDPR Compliant",
+                desc: "Encrypted secrets, data isolation, right-to-erasure support, and full data processing transparency.",
+              },
+              {
+                icon: Shield,
+                title: "Security-First Infrastructure",
+                desc: "RBAC, JWT/OAuth, 2FA, audit logs, rate limiting, and isolated execution environments.",
+              },
+            ].map((item, index) => (
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1 }}
+                className="p-8 rounded-xl border border-white/5 bg-void-paper/50 text-center hover:border-electric/20 transition-colors"
+                data-testid={`compliance-card-${index}`}
+              >
+                <div className="w-14 h-14 rounded-xl bg-electric/10 flex items-center justify-center mx-auto mb-5">
+                  <item.icon className="w-7 h-7 text-electric" />
+                </div>
+                <h3 className="font-outfit font-semibold text-lg text-white mb-3">{item.title}</h3>
+                <p className="text-zinc-400 text-sm">{item.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Pricing Section */}
       <section id="pricing" className="py-20 lg:py-32 relative border-t border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -674,11 +777,146 @@ export default function LandingPage() {
               </a>
             </div>
             <div className="text-sm text-zinc-500">
-              © {new Date().getFullYear()} CursorCode AI. All rights reserved.
+              &copy; {new Date().getFullYear()} CursorCode AI. All rights reserved.
             </div>
           </div>
         </div>
       </footer>
     </div>
+  );
+}
+
+/* =========================================================
+   INTERACTIVE ARCHITECTURE GRAPH
+========================================================= */
+function ArchitectureGraph() {
+  const agents = [
+    { name: "Architect Agent", desc: "System design & planning", color: "from-blue-500 to-cyan-400" },
+    { name: "Frontend Agent", desc: "UI/UX & components", color: "from-purple-500 to-pink-400" },
+    { name: "Backend Agent", desc: "APIs & business logic", color: "from-emerald-500 to-green-400" },
+    { name: "DevOps Agent", desc: "CI/CD & infrastructure", color: "from-orange-500 to-amber-400" },
+    { name: "Security Agent", desc: "Audits & hardening", color: "from-red-500 to-rose-400" },
+    { name: "QA Agent", desc: "Testing & validation", color: "from-teal-500 to-cyan-400" },
+    { name: "Product Agent", desc: "Requirements & specs", color: "from-indigo-500 to-violet-400" },
+  ];
+
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActive((prev) => (prev + 1) % agents.length);
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [agents.length]);
+
+  return (
+    <div className="relative" data-testid="architecture-graph">
+      {/* Central Orchestrator */}
+      <div className="flex justify-center mb-8">
+        <div className="relative px-8 py-4 rounded-xl bg-electric/10 border-2 border-electric/40 shadow-glow">
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-electric rounded-full text-[10px] font-bold text-white uppercase tracking-wider">
+            Orchestrator
+          </div>
+          <p className="font-outfit font-bold text-xl text-white">CursorCode AI Engine</p>
+          <p className="text-sm text-zinc-400 text-center">Powered by xAI Grok</p>
+        </div>
+      </div>
+
+      {/* Agent Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        {agents.map((agent, index) => (
+          <motion.div
+            key={agent.name}
+            animate={{
+              scale: index === active ? 1.05 : 1,
+              borderColor: index === active ? "rgba(59, 130, 246, 0.5)" : "rgba(255, 255, 255, 0.05)",
+            }}
+            transition={{ duration: 0.3 }}
+            className={`relative p-5 rounded-xl border bg-void-paper/50 transition-all cursor-default ${
+              index === active ? "shadow-glow" : ""
+            }`}
+            data-testid={`agent-card-${index}`}
+          >
+            {index === active && (
+              <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-electric animate-pulse" />
+            )}
+            <div className={`w-8 h-1 rounded-full bg-gradient-to-r ${agent.color} mb-3`} />
+            <p className="font-medium text-white text-sm">{agent.name}</p>
+            <p className="text-xs text-zinc-500 mt-1">{agent.desc}</p>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   DEPLOY TERMINAL ANIMATION
+========================================================= */
+function DeployTerminal() {
+  const lines = [
+    { text: "Analyzing prompt...", delay: 0 },
+    { text: "Generating system architecture...", delay: 800 },
+    { text: "Creating React frontend with TailwindCSS...", delay: 1600 },
+    { text: "Building FastAPI backend with auth...", delay: 2400 },
+    { text: "Configuring Stripe billing integration...", delay: 3200 },
+    { text: "Running security audit...", delay: 4000 },
+    { text: "Executing test suite... 47/47 passed", delay: 4800 },
+    { text: "Building Docker container...", delay: 5600 },
+    { text: "Deploying to CursorCode Cloud...", delay: 6400 },
+    { text: "Application live at https://your-project.cursorcode.app", delay: 7200 },
+  ];
+
+  const [visibleLines, setVisibleLines] = useState(0);
+
+  useEffect(() => {
+    if (visibleLines >= lines.length) {
+      const resetTimer = setTimeout(() => setVisibleLines(0), 3000);
+      return () => clearTimeout(resetTimer);
+    }
+    const timer = setTimeout(() => setVisibleLines((v) => v + 1), 800);
+    return () => clearTimeout(timer);
+  }, [visibleLines, lines.length]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      className="relative"
+      data-testid="deploy-terminal"
+    >
+      <div className="absolute -inset-2 bg-electric/10 rounded-2xl blur-xl" />
+      <div className="relative rounded-xl border border-white/10 overflow-hidden bg-void">
+        <div className="flex items-center gap-2 px-4 py-3 bg-void-paper border-b border-white/5">
+          <div className="flex gap-2">
+            <div className="w-3 h-3 rounded-full bg-red-500" />
+            <div className="w-3 h-3 rounded-full bg-yellow-500" />
+            <div className="w-3 h-3 rounded-full bg-green-500" />
+          </div>
+          <span className="text-xs text-zinc-500 ml-2 font-mono">cursorcode deploy --live</span>
+        </div>
+        <div className="p-6 font-mono text-sm space-y-2 min-h-[280px]">
+          {lines.slice(0, visibleLines).map((line, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className={`flex items-center gap-2 ${i === lines.length - 1 ? "text-electric font-bold" : "text-emerald"}`}
+            >
+              <span className={i === lines.length - 1 ? "text-electric" : "text-emerald"}>
+                {i === lines.length - 1 ? ">>>" : ">>>"}
+              </span>
+              {line.text}
+            </motion.div>
+          ))}
+          {visibleLines < lines.length && (
+            <div className="flex items-center gap-2 text-zinc-500">
+              <span className="w-2 h-4 bg-electric/60 animate-pulse" />
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 }

@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
-import { ArrowLeft, Eye, EyeOff, Loader2, Github } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Loader2, Github, ShieldCheck } from "lucide-react";
 import Logo from "../components/Logo";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -22,38 +22,42 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [totpCode, setTotpCode] = useState("");
+  const [requires2FA, setRequires2FA] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
   // =====================================================
-  // EMAIL LOGIN
+  // EMAIL LOGIN (with 2FA support)
   // =====================================================
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (loading) return;
-
     setLoading(true);
-
     try {
-      await authLogin(email, password);
-
-      toast.success("Welcome back!");
-
-      navigate("/dashboard");
-
+      if (requires2FA) {
+        await authLogin(email, password, totpCode);
+        toast.success("Welcome back!");
+        navigate("/dashboard");
+      } else {
+        const result = await authLogin(email, password);
+        if (result?.requires_2fa) {
+          setRequires2FA(true);
+          toast.info("Enter your 2FA code to continue");
+        } else {
+          toast.success("Welcome back!");
+          navigate("/dashboard");
+        }
+      }
     } catch (error) {
       console.error("Login error:", error);
-
       const message =
         error?.response?.data?.detail ||
         error?.response?.data?.message ||
         "Invalid email or password";
-
       toast.error(message);
-
     } finally {
       setLoading(false);
     }
@@ -171,52 +175,99 @@ export default function LoginPage() {
           {/* EMAIL LOGIN FORM */}
           <form onSubmit={handleSubmit} className="space-y-6">
 
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
+            {!requires2FA ? (
+              <>
+                <div>
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    data-testid="login-email-input"
+                  />
+                </div>
 
-            <div>
-              <Label>Password</Label>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label>Password</Label>
+                    <Link to="/forgot-password" className="text-xs text-electric hover:underline">
+                      Forgot password?
+                    </Link>
+                  </div>
 
-              <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      data-testid="login-password-input"
+                    />
 
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3"
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+
+                </div>
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 p-4 rounded-lg bg-electric/10 border border-electric/20">
+                  <ShieldCheck className="w-5 h-5 text-electric flex-shrink-0" />
+                  <p className="text-sm text-zinc-300">
+                    Two-factor authentication is enabled. Enter your 6-digit code from your authenticator app.
+                  </p>
+                </div>
+                <div>
+                  <Label>2FA Code</Label>
+                  <Input
+                    type="text"
+                    maxLength={6}
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="000000"
+                    className="text-center text-2xl tracking-[8px] font-mono"
+                    required
+                    autoFocus
+                    data-testid="login-2fa-input"
+                  />
+                </div>
               </div>
-
-            </div>
+            )}
 
             <Button
               type="submit"
               disabled={loading}
               className="w-full h-12 bg-electric hover:bg-electric/90 text-white shadow-glow"
+              data-testid="login-submit-button"
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Signing in...
+                  {requires2FA ? "Verifying..." : "Signing in..."}
                 </>
+              ) : requires2FA ? (
+                "Verify & Sign in"
               ) : (
                 "Sign in"
               )}
             </Button>
+
+            {requires2FA && (
+              <button
+                type="button"
+                onClick={() => { setRequires2FA(false); setTotpCode(""); }}
+                className="w-full text-sm text-zinc-400 hover:text-white transition-colors"
+              >
+                Back to login
+              </button>
+            )}
 
           </form>
 

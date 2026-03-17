@@ -16,6 +16,11 @@ import bcrypt
 from jose import jwt, JWTError
 import httpx
 import stripe
+import pyotp
+import qrcode
+from io import BytesIO
+from base64 import b64encode
+import json
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from urllib.parse import urlencode
@@ -98,6 +103,13 @@ class User(BaseModel):
     github_access_token: Optional[str] = None
     avatar_url: Optional[str] = None
     onboarding_completed: bool = False
+    # 2FA (TOTP)
+    totp_secret: Optional[str] = None
+    totp_enabled: bool = False
+    totp_backup_codes: Optional[List[str]] = None
+    # Password Reset
+    reset_token: Optional[str] = None
+    reset_token_expires: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class UserResponse(BaseModel):
@@ -112,6 +124,7 @@ class UserResponse(BaseModel):
     github_username: Optional[str]
     avatar_url: Optional[str]
     onboarding_completed: bool
+    totp_enabled: bool = False
     created_at: str
 
 class TokenResponse(BaseModel):
@@ -295,6 +308,7 @@ def user_to_response(user: User) -> UserResponse:
         credits=user.credits, credits_used=user.credits_used, is_admin=user.is_admin,
         email_verified=user.email_verified, github_username=user.github_username,
         avatar_url=user.avatar_url, onboarding_completed=user.onboarding_completed,
+        totp_enabled=user.totp_enabled,
         created_at=user.created_at.isoformat() if isinstance(user.created_at, datetime) else user.created_at
     )
 
@@ -486,7 +500,7 @@ async def resend_verification(user: User = Depends(get_current_user), background
     background_tasks.add_task(send_verification_email, user.email, user.name, new_token)
     return {"message": "Verification email sent"}
 
-@api_router.post("/auth/login", response_model=TokenResponse)
+@api_router.post("/auth/login")
 async def login(credentials: UserLogin):
     user_doc = await db.users.find_one({"email": credentials.email}, {"_id": 0})
     if not user_doc:
@@ -496,6 +510,9 @@ async def login(credentials: UserLogin):
     user = User(**user_doc)
     if not user.password_hash or not verify_password(credentials.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    # If 2FA enabled, signal frontend to request code
+    if user.totp_enabled:
+        return {"requires_2fa": True, "message": "2FA code required", "email": user.email}
     access_token = create_access_token({"sub": user.id})
     refresh_token = create_refresh_token({"sub": user.id})
     return TokenResponse(access_token=access_token, refresh_token=refresh_token, user=user_to_response(user))
@@ -550,6 +567,167 @@ async def update_user_profile(data: UserUpdateRequest, user: User = Depends(get_
 async def complete_onboarding(user: User = Depends(get_current_user)):
     await db.users.update_one({"id": user.id}, {"$set": {"onboarding_completed": True}})
     return {"message": "Onboarding completed"}
+
+# ==================== TWO-FACTOR AUTHENTICATION (2FA) ====================
+
+class TwoFAVerifyRequest(BaseModel):
+    code: str
+
+@api_router.post("/auth/2fa/enable")
+async def enable_2fa(user: User = Depends(get_current_user)):
+    """Generate TOTP secret, QR code, and backup codes for 2FA setup."""
+    if user.totp_enabled:
+        raise HTTPException(status_code=400, detail="2FA is already enabled")
+    secret = pyotp.random_base32()
+    totp = pyotp.TOTP(secret)
+    provisioning_uri = totp.provisioning_uri(name=user.email, issuer_name="CursorCode AI")
+    # Generate QR code as base64
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    qr_base64 = f"data:image/png;base64,{b64encode(buf.getvalue()).decode()}"
+    # Generate backup codes
+    backup_codes = [secrets.token_hex(4).upper() for _ in range(8)]
+    # Store secret and backup codes (not yet enabled until verified)
+    await db.users.update_one(
+        {"id": user.id},
+        {"$set": {"totp_secret": secret, "totp_backup_codes": backup_codes}}
+    )
+    return {"qr_code_base64": qr_base64, "secret": secret, "backup_codes": backup_codes}
+
+@api_router.post("/auth/2fa/verify")
+async def verify_2fa(data: TwoFAVerifyRequest, user: User = Depends(get_current_user)):
+    """Verify TOTP code and activate 2FA."""
+    user_doc = await db.users.find_one({"id": user.id}, {"_id": 0})
+    secret = user_doc.get("totp_secret")
+    if not secret:
+        raise HTTPException(status_code=400, detail="2FA setup not initiated. Call /auth/2fa/enable first.")
+    totp = pyotp.TOTP(secret)
+    if not totp.verify(data.code, valid_window=1):
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+    await db.users.update_one({"id": user.id}, {"$set": {"totp_enabled": True}})
+    return {"message": "2FA enabled successfully"}
+
+@api_router.post("/auth/2fa/disable")
+async def disable_2fa(data: TwoFAVerifyRequest, user: User = Depends(get_current_user)):
+    """Disable 2FA after verifying current code or backup code."""
+    if not user.totp_enabled:
+        raise HTTPException(status_code=400, detail="2FA is not enabled")
+    user_doc = await db.users.find_one({"id": user.id}, {"_id": 0})
+    secret = user_doc.get("totp_secret")
+    backup_codes = user_doc.get("totp_backup_codes", [])
+    totp = pyotp.TOTP(secret)
+    code_valid = totp.verify(data.code, valid_window=1)
+    backup_valid = data.code.upper() in [c.upper() for c in (backup_codes or [])]
+    if not code_valid and not backup_valid:
+        raise HTTPException(status_code=400, detail="Invalid code")
+    await db.users.update_one(
+        {"id": user.id},
+        {"$set": {"totp_enabled": False, "totp_secret": None, "totp_backup_codes": None}}
+    )
+    return {"message": "2FA disabled successfully"}
+
+class TwoFALoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    totp_code: Optional[str] = None
+
+@api_router.post("/auth/login-2fa")
+async def login_with_2fa(credentials: TwoFALoginRequest):
+    """Login endpoint that handles 2FA if enabled."""
+    user_doc = await db.users.find_one({"email": credentials.email}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if isinstance(user_doc.get('created_at'), str):
+        user_doc['created_at'] = datetime.fromisoformat(user_doc['created_at'])
+    user = User(**user_doc)
+    if not user.password_hash or not verify_password(credentials.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.totp_enabled:
+        if not credentials.totp_code:
+            return {"requires_2fa": True, "message": "2FA code required"}
+        totp = pyotp.TOTP(user.totp_secret)
+        backup_codes = user.totp_backup_codes or []
+        code_valid = totp.verify(credentials.totp_code, valid_window=1)
+        backup_valid = credentials.totp_code.upper() in [c.upper() for c in backup_codes]
+        if not code_valid and not backup_valid:
+            raise HTTPException(status_code=401, detail="Invalid 2FA code")
+        # If backup code used, remove it
+        if backup_valid:
+            new_codes = [c for c in backup_codes if c.upper() != credentials.totp_code.upper()]
+            await db.users.update_one({"id": user.id}, {"$set": {"totp_backup_codes": new_codes}})
+    access_token = create_access_token({"sub": user.id})
+    refresh_token = create_refresh_token({"sub": user.id})
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token, user=user_to_response(user))
+
+# ==================== PASSWORD RESET ====================
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
+
+@api_router.post("/auth/reset-password/request")
+async def request_password_reset(data: PasswordResetRequest, background_tasks: BackgroundTasks):
+    """Send password reset email. Always returns 200 to prevent email enumeration."""
+    user_doc = await db.users.find_one({"email": data.email}, {"_id": 0})
+    if user_doc:
+        reset_token = secrets.token_urlsafe(32)
+        expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        await db.users.update_one(
+            {"email": data.email},
+            {"$set": {"reset_token": reset_token, "reset_token_expires": expires}}
+        )
+        reset_url = f"{FRONTEND_URL}/reset-password?token={reset_token}"
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #0F172A, #1E293B); padding: 30px; text-align: center;">
+                <h1 style="color: #60A5FA; margin: 0;">CursorCode AI</h1>
+            </div>
+            <div style="padding: 30px; background: #0F172A; color: #E2E8F0;">
+                <h2>Reset Your Password</h2>
+                <p>We received a request to reset your password. Click the button below to set a new password.</p>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="{reset_url}" style="background: #3B82F6; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
+                        Reset Password
+                    </a>
+                </div>
+                <p style="color: #94A3B8; font-size: 14px;">This link expires in 1 hour. If you didn't request this, ignore this email.</p>
+            </div>
+        </div>"""
+        background_tasks.add_task(send_email, data.email, "Reset your CursorCode AI password", html_content)
+    return {"message": "If an account exists with that email, a reset link has been sent."}
+
+@api_router.post("/auth/reset-password/confirm")
+async def confirm_password_reset(data: PasswordResetConfirm):
+    """Reset password using token."""
+    user_doc = await db.users.find_one({"reset_token": data.token}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    expires = user_doc.get("reset_token_expires")
+    if expires:
+        exp_dt = datetime.fromisoformat(expires)
+        if datetime.now(timezone.utc) > exp_dt:
+            raise HTTPException(status_code=400, detail="Reset token has expired")
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    new_hash = hash_password(data.new_password)
+    await db.users.update_one(
+        {"reset_token": data.token},
+        {"$set": {"password_hash": new_hash, "reset_token": None, "reset_token_expires": None}}
+    )
+    # Auto-login after reset
+    if isinstance(user_doc.get('created_at'), str):
+        user_doc['created_at'] = datetime.fromisoformat(user_doc['created_at'])
+    user = User(**user_doc)
+    access_token = create_access_token({"sub": user.id})
+    refresh_token = create_refresh_token({"sub": user.id})
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token, user=user_to_response(user))
 
 # ==================== GITHUB OAUTH ROUTES ====================
 
@@ -928,7 +1106,7 @@ async def ai_build_project(data: AIBuildRequest, user: User = Depends(get_curren
         await db.users.update_one({"id": user.id}, {"$inc": {"credits_used": 1}})
         track_ai_usage(user.email)
         return result
-    except Exception as e:
+    except Exception:
         logger.exception("AI build failed")
         raise HTTPException(status_code=500, detail="AI build failed")
 
