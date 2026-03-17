@@ -1,6 +1,6 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, BackgroundTasks, Header, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -183,6 +183,7 @@ class AIGenerateResponse(BaseModel):
     model_used: str
     credits_used: int
     created_at: str
+    files: Optional[Dict[str, str]] = None
 
 class AIBuildRequest(BaseModel):
     prompt: str
@@ -301,6 +302,25 @@ async def get_admin_user(user: User = Depends(get_current_user)) -> User:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+async def get_user_from_token_param(request: Request) -> User:
+    """Extract user from 'token' query param - used for SSE EventSource which can't send headers."""
+    token = request.query_params.get("token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Token required")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user_doc = await db.users.find_one({"id": user_id}, {"_id": 0})
+        if not user_doc:
+            raise HTTPException(status_code=401, detail="User not found")
+        if isinstance(user_doc.get('created_at'), str):
+            user_doc['created_at'] = datetime.fromisoformat(user_doc['created_at'])
+        return User(**user_doc)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 def user_to_response(user: User) -> UserResponse:
     return UserResponse(
@@ -1041,12 +1061,31 @@ async def generate_code(request: AIGenerateRequest, user: User = Depends(get_cur
     project_doc = await db.projects.find_one({"id": request.project_id, "user_id": user.id}, {"_id": 0})
     if not project_doc:
         raise HTTPException(status_code=404, detail="Project not found")
-    system_message = "You are CursorCode AI, an elite autonomous AI software engineering system. Generate clean, production-ready, well-documented code."
+    system_message = """You are CursorCode AI, an elite autonomous AI software engineering system.
+Generate clean, production-ready, well-documented code.
+Output each file using this format:
+
+```filename:ComponentName.jsx
+// file content here
+```
+
+Always generate complete, working files with proper imports."""
     try:
         response = await call_xai_api(request.prompt, model, system_message)
     except Exception as e:
         logger.error(f"AI generation failed: {e}")
         raise HTTPException(status_code=500, detail="AI generation failed")
+
+    # Parse files and save to project
+    parsed_files = parse_files_from_response(response)
+    if parsed_files:
+        existing_files = project_doc.get("files", {})
+        existing_files.update(parsed_files)
+        await db.projects.update_one(
+            {"id": request.project_id},
+            {"$set": {"files": existing_files, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+
     await db.users.update_one({"id": user.id}, {"$inc": {"credits_used": credits_needed}})
     usage = CreditUsage(user_id=user.id, project_id=request.project_id, model=model,
                         credits_used=credits_needed, task_type=request.task_type)
@@ -1056,7 +1095,7 @@ async def generate_code(request: AIGenerateRequest, user: User = Depends(get_cur
     return AIGenerateResponse(
         id=str(uuid.uuid4()), project_id=request.project_id, prompt=request.prompt,
         response=response, model_used=model, credits_used=credits_needed,
-        created_at=datetime.now(timezone.utc).isoformat()
+        created_at=datetime.now(timezone.utc).isoformat(), files=parsed_files
     )
 
 @api_router.get("/ai/models")
@@ -1069,57 +1108,163 @@ async def get_ai_models():
         ]
     }
 
-# ==================== AI BUILD (Multi-Agent Orchestrator) ====================
+# ==================== AI BUILD (Multi-Agent Orchestrator with SSE) ====================
 
-@api_router.post("/ai/build")
-async def ai_build_project(data: AIBuildRequest, user: User = Depends(get_current_user)):
-    """Full multi-agent AI project generation using the orchestrator"""
-    from ai_rate_limiter import check_rate_limit
-    from ai_metrics import track_ai_usage
+AGENT_CONFIGS = [
+    {"name": "architect", "label": "Architect Agent", "system": "You are a senior software architect at a top tech company. Given a user's application idea, design a complete system architecture. Output a clear markdown document with: 1) Project overview, 2) Tech stack recommendations, 3) Database schema (tables/collections with fields), 4) API endpoints list, 5) Component hierarchy for the frontend, 6) Security considerations. Be specific and practical - this will be used as a blueprint by other engineers."},
+    {"name": "frontend", "label": "Frontend Agent", "system": "You are an expert frontend engineer. Given an architecture document and user requirements, generate production-ready React code. Output complete, working files with proper imports. Use React functional components, TailwindCSS for styling, and follow best practices. Output each file in this format:\n\n```filename:ComponentName.jsx\n// file content here\n```\n\nGenerate all necessary components, pages, and utility files."},
+    {"name": "backend", "label": "Backend Agent", "system": "You are an expert backend engineer. Given an architecture document and user requirements, generate production-ready Python FastAPI code. Output complete, working files. Include: models, routes, authentication, database setup, and error handling. Output each file in this format:\n\n```filename:main.py\n# file content here\n```\n\nGenerate all necessary backend files."},
+    {"name": "security", "label": "Security Agent", "system": "You are a senior cybersecurity engineer. Review the provided code for security vulnerabilities. Output a markdown security report with: 1) Critical issues found, 2) Warnings, 3) Recommendations, 4) Specific code fixes needed. Be thorough but practical."},
+    {"name": "qa", "label": "QA Agent", "system": "You are a QA automation engineer. Given the application code, generate comprehensive test files. Include unit tests, integration tests, and API tests. Use pytest for backend and Jest/React Testing Library for frontend. Output each test file in this format:\n\n```filename:test_main.py\n# test content here\n```"},
+    {"name": "devops", "label": "DevOps Agent", "system": "You are a DevOps engineer. Generate deployment configuration files for the application. Include: Dockerfile, docker-compose.yml, CI/CD pipeline (GitHub Actions), environment configuration, and deployment instructions. Output each file in this format:\n\n```filename:Dockerfile\n# content here\n```"},
+]
 
-    if not check_rate_limit(user.email, user.plan):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded. Upgrade your plan.")
+async def stream_xai_api(prompt: str, model: str, system_message: str):
+    """Call xAI API with streaming and yield chunks."""
+    if not XAI_API_KEY:
+        yield f"// Demo mode - configure XAI_API_KEY for real generation\n// Prompt: {prompt[:100]}..."
+        return
 
-    remaining_credits = user.credits - user.credits_used
-    if remaining_credits < 1:
+    headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
+    messages = [
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": prompt},
+    ]
+    payload = {"model": model, "messages": messages, "max_tokens": 8192, "temperature": 0.5, "stream": True}
+
+    async with httpx.AsyncClient(timeout=180.0) as http_client:
+        async with http_client.stream("POST", f"{XAI_BASE_URL}/chat/completions", headers=headers, json=payload) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        continue
+
+def parse_files_from_response(text: str) -> Dict[str, str]:
+    """Extract files from AI response using ```filename:xxx``` markers."""
+    files = {}
+    import re
+    # Pattern: ```filename:xxx\ncontent\n```
+    pattern = r'```(?:filename:)?([\w\-\.\/]+)\n(.*?)```'
+    matches = re.findall(pattern, text, re.DOTALL)
+    for fname, content in matches:
+        fname = fname.strip()
+        if fname and not fname.startswith('//'):
+            files[fname] = content.strip()
+
+    # If no files parsed, try to detect code blocks with language hints
+    if not files:
+        code_pattern = r'```(\w+)\n(.*?)```'
+        code_matches = re.findall(code_pattern, text, re.DOTALL)
+        ext_map = {"jsx": ".jsx", "javascript": ".js", "python": ".py", "typescript": ".tsx",
+                    "css": ".css", "html": ".html", "json": ".json", "yaml": ".yml", "dockerfile": "Dockerfile"}
+        for i, (lang, content) in enumerate(code_matches):
+            ext = ext_map.get(lang.lower(), f".{lang.lower()}")
+            fname = f"generated_{i}{ext}" if ext != "Dockerfile" else ext
+            files[fname] = content.strip()
+
+    return files
+
+@api_router.get("/ai/generate-stream")
+async def generate_stream(
+    request: Request,
+    project_id: str,
+    prompt: str,
+    model: str = None,
+):
+    """SSE endpoint: runs multi-agent pipeline and streams each agent's output in real-time."""
+    user = await get_user_from_token_param(request)
+    model = model or FAST_REASONING_MODEL
+    credits_needed = calculate_credits(model, "code_generation")
+    remaining = user.credits - user.credits_used
+    if remaining < credits_needed:
         raise HTTPException(status_code=402, detail="Insufficient credits")
 
-    if not XAI_API_KEY:
-        # Demo mode response
-        return {
-            "project_name": "demo-project",
-            "architecture": "Demo architecture - configure XAI_API_KEY for real generation",
-            "frontend": "// Demo frontend code",
-            "backend": "# Demo backend code",
-            "security": "No security issues found (demo)",
-            "tests": "# Demo test suite",
-            "devops": "# Demo Dockerfile",
-            "execution_log": "Demo mode - no execution",
-            "repository": None,
-            "demo": True
-        }
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
 
-    try:
-        from orchestrator import orchestrate_project
-        result = await orchestrate_project(api_key=XAI_API_KEY, prompt=data.prompt, user_email=user.email)
+    async def event_stream():
+        all_outputs = {}
+        all_files = {}
+        context_so_far = ""
+
+        for agent_cfg in AGENT_CONFIGS:
+            agent_name = agent_cfg["name"]
+            agent_label = agent_cfg["label"]
+            system_msg = agent_cfg["system"]
+
+            # Signal agent start
+            yield f"data: {json.dumps({'type': 'agent_start', 'agent': agent_name, 'label': agent_label})}\n\n"
+
+            # Build the user prompt with accumulated context
+            user_prompt = f"User Request:\n{prompt}\n"
+            if context_so_far:
+                user_prompt += f"\nPrevious agents' output (use as context):\n{context_so_far[:6000]}"
+
+            # Stream the agent's response
+            full_response = ""
+            try:
+                async for chunk in stream_xai_api(user_prompt, model, system_msg):
+                    full_response += chunk
+                    yield f"data: {json.dumps({'type': 'agent_chunk', 'agent': agent_name, 'content': chunk})}\n\n"
+            except Exception as e:
+                logger.error(f"Agent {agent_name} failed: {e}")
+                yield f"data: {json.dumps({'type': 'agent_error', 'agent': agent_name, 'error': str(e)})}\n\n"
+                full_response = f"// Agent {agent_name} encountered an error: {str(e)}"
+
+            all_outputs[agent_name] = full_response
+            context_so_far += f"\n\n--- {agent_label} Output ---\n{full_response[:3000]}"
+
+            # Parse files from this agent's output
+            agent_files = parse_files_from_response(full_response)
+            all_files.update(agent_files)
+
+            # Signal agent complete
+            yield f"data: {json.dumps({'type': 'agent_complete', 'agent': agent_name, 'files_count': len(agent_files)})}\n\n"
+
+        # Save all parsed files to project
+        existing_files = project_doc.get("files", {})
+        existing_files.update(all_files)
+
+        # Also save raw outputs as reference docs
+        for agent_name, output in all_outputs.items():
+            existing_files[f"_docs/{agent_name}_output.md"] = output
+
+        await db.projects.update_one(
+            {"id": project_id},
+            {"$set": {
+                "files": existing_files,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "status": "generated",
+            }}
+        )
+
         # Deduct credits
-        await db.users.update_one({"id": user.id}, {"$inc": {"credits_used": 1}})
-        track_ai_usage(user.email)
-        return result
-    except Exception:
-        logger.exception("AI build failed")
-        raise HTTPException(status_code=500, detail="AI build failed")
+        await db.users.update_one({"id": user.id}, {"$inc": {"credits_used": credits_needed}})
+        usage = CreditUsage(user_id=user.id, project_id=project_id, model=model,
+                            credits_used=credits_needed, task_type="multi_agent_build")
+        usage_doc = usage.model_dump()
+        usage_doc['created_at'] = usage_doc['created_at'].isoformat()
+        await db.credit_usage.insert_one(usage_doc)
 
-@api_router.get("/ai/stream")
-async def stream_build(prompt: str, user: User = Depends(get_current_user)):
-    """Stream AI project build via SSE"""
-    from ai_rate_limiter import check_rate_limit
-    if not check_rate_limit(user.email, user.plan):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-    if not XAI_API_KEY:
-        raise HTTPException(status_code=503, detail="AI service not configured")
-    from ai_streaming import stream_project_build
-    return await stream_project_build(prompt=prompt, user_email=user.email)
+        # Signal completion with final file list
+        yield f"data: {json.dumps({'type': 'complete', 'files': list(existing_files.keys()), 'credits_used': credits_needed})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    })
 
 # ==================== DEPLOYMENT ROUTES ====================
 
