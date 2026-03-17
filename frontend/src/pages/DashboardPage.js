@@ -15,8 +15,9 @@ import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
 import { toast } from "sonner";
 import Logo from "../components/Logo";
-import Sidebar from "../components/Sidebar"; // Extracted Sidebar component
+import Sidebar from "../components/Sidebar";
 import CreditMeter from "../components/CreditMeter";
+import OnboardingWizard from "../components/OnboardingWizard";
 import {
   Plus,
   FolderOpen,
@@ -49,7 +50,7 @@ import {
 } from "../components/ui/dropdown-menu";
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,10 +63,17 @@ export default function DashboardPage() {
   const [githubRepos, setGithubRepos] = useState([]);
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [importing, setImporting] = useState(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     fetchProjects();
   }, []);
+
+  useEffect(() => {
+    if (user && !user.onboarding_completed) {
+      setShowOnboarding(true);
+    }
+  }, [user]);
 
   const fetchProjects = async () => {
     try {
@@ -176,6 +184,14 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-void flex">
+      {/* Onboarding Wizard */}
+      {showOnboarding && (
+        <OnboardingWizard
+          user={user}
+          onComplete={() => { setShowOnboarding(false); refreshUser(); }}
+        />
+      )}
+
       {/* Sidebar */}
       <Sidebar
         user={user}

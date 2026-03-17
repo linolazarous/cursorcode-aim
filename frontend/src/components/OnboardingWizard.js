@@ -1,499 +1,277 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
 import { toast } from "sonner";
-import Logo from "./Logo";
 import {
+  Sparkles,
+  Code2,
+  ShieldCheck,
+  Rocket,
+  Layers,
+  Zap,
   ArrowRight,
   ArrowLeft,
-  Loader2,
-  Sparkles,
-  Rocket,
-  Check,
-  Zap,
+  CheckCircle2,
+  Terminal,
+  CreditCard,
   LayoutDashboard,
   ShoppingCart,
-  FileText,
-  Server,
-  Briefcase,
-  MessageCircle,
-  Bot,
   Smartphone,
-  Wand2,
-  Cloud,
-  PartyPopper,
+  BarChart3,
+  Server,
 } from "lucide-react";
 
-const ICON_MAP = {
-  "layout-dashboard": LayoutDashboard,
-  "shopping-cart": ShoppingCart,
-  "file-text": FileText,
-  server: Server,
-  briefcase: Briefcase,
-  "message-circle": MessageCircle,
-  bot: Bot,
-  smartphone: Smartphone,
-};
-
-const STEPS = [
-  { id: "welcome", title: "Welcome" },
-  { id: "template", title: "Pick Template" },
-  { id: "customize", title: "Customize" },
-  { id: "generate", title: "Generate" },
-  { id: "complete", title: "Ready!" },
+const USE_CASES = [
+  { id: "saas", label: "SaaS Application", icon: LayoutDashboard, desc: "User auth, billing, dashboards" },
+  { id: "ecommerce", label: "E-Commerce", icon: ShoppingCart, desc: "Product catalog, cart, payments" },
+  { id: "dashboard", label: "Analytics Dashboard", icon: BarChart3, desc: "Charts, data tables, reports" },
+  { id: "api", label: "Backend API", icon: Server, desc: "REST/GraphQL, auth, database" },
+  { id: "mobile", label: "Mobile App", icon: Smartphone, desc: "React Native, cross-platform" },
+  { id: "other", label: "Something Else", icon: Sparkles, desc: "Tell the AI what you need" },
 ];
 
-export default function OnboardingWizard({ onComplete }) {
-  const { user, refreshUser } = useAuth();
-  const navigate = useNavigate();
+const FEATURES = [
+  {
+    icon: Code2,
+    title: "AI Code Generation",
+    desc: "Describe what you want in plain English. Our multi-agent system architects, codes, and tests your entire application.",
+    color: "text-blue-400",
+    bg: "bg-blue-500/10",
+  },
+  {
+    icon: Layers,
+    title: "Project Templates",
+    desc: "Start from battle-tested templates for SaaS, e-commerce, dashboards, and more. Preview before you use.",
+    color: "text-purple-400",
+    bg: "bg-purple-500/10",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Enterprise Security",
+    desc: "Two-factor authentication, audit logging, RBAC, and SOC 2-ready architecture built in from day one.",
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/10",
+  },
+  {
+    icon: Rocket,
+    title: "One-Click Deploy",
+    desc: "Deploy to CursorCode Cloud instantly. Get a live preview URL for every project, no DevOps required.",
+    color: "text-amber-400",
+    bg: "bg-amber-500/10",
+  },
+];
+
+const STEP_COUNT = 4;
+
+export default function OnboardingWizard({ user, onComplete }) {
   const [step, setStep] = useState(0);
-  const [templates, setTemplates] = useState([]);
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [projectName, setProjectName] = useState("");
-  const [customPrompt, setCustomPrompt] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [generationPhase, setGenerationPhase] = useState(0);
-  const [createdProject, setCreatedProject] = useState(null);
+  const [selectedUseCase, setSelectedUseCase] = useState(null);
+  const [completing, setCompleting] = useState(false);
 
-  useEffect(() => {
-    api.get("/templates").then((res) => setTemplates(res.data.templates));
-  }, []);
-
-  useEffect(() => {
-    if (selectedTemplate) {
-      setProjectName(selectedTemplate.name);
-      setCustomPrompt(selectedTemplate.prompt);
-    }
-  }, [selectedTemplate]);
-
-  const handleGenerate = async () => {
-    setGenerating(true);
-    setGenerationPhase(0);
-
-    const phases = [
-      "Analyzing requirements...",
-      "Designing architecture...",
-      "Generating frontend...",
-      "Building backend...",
-      "Running security audit...",
-      "Writing tests...",
-      "Preparing deployment...",
-    ];
-
-    // Simulate generation phases
-    for (let i = 0; i < phases.length; i++) {
-      setGenerationPhase(i);
-      await new Promise((r) => setTimeout(r, 800));
-    }
-
-    // Create the project
+  const handleComplete = async () => {
+    setCompleting(true);
     try {
-      const res = await api.post(`/templates/${selectedTemplate.id}/create`);
-      setCreatedProject(res.data);
-      // Mark onboarding complete
       await api.post("/users/me/complete-onboarding");
-      await refreshUser();
-      setStep(4);
-    } catch (err) {
-      toast.error("Failed to create project");
+      toast.success("You're all set! Let's build something amazing.");
+      onComplete?.();
+    } catch {
+      toast.error("Something went wrong");
     } finally {
-      setGenerating(false);
+      setCompleting(false);
     }
   };
 
-  const handleFinish = () => {
-    if (createdProject) {
-      navigate(`/project/${createdProject.id}`);
-    } else {
-      onComplete();
-    }
-  };
-
-  const handleSkip = async () => {
-    try {
-      await api.post("/users/me/complete-onboarding");
-      await refreshUser();
-    } catch (e) {
-      // Silently handle
-    }
-    onComplete();
-  };
-
-  const GENERATION_PHASES = [
-    "Analyzing requirements...",
-    "Designing architecture...",
-    "Generating frontend...",
-    "Building backend...",
-    "Running security audit...",
-    "Writing tests...",
-    "Preparing deployment...",
-  ];
+  const next = () => setStep((s) => Math.min(s + 1, STEP_COUNT - 1));
+  const prev = () => setStep((s) => Math.max(s - 1, 0));
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-void flex items-center justify-center"
-      data-testid="onboarding-wizard"
-    >
-      {/* Background Effects */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-electric/5 rounded-full blur-3xl animate-pulse" />
-        <div
-          className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-purple-500/5 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "1.5s" }}
-        />
-      </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid="onboarding-wizard">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
-      <div className="relative z-10 w-full max-w-3xl mx-auto px-6">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="relative w-full max-w-2xl mx-4 rounded-2xl border border-white/10 bg-void-paper shadow-2xl overflow-hidden"
+      >
         {/* Progress Bar */}
-        <div className="flex items-center justify-between mb-8 px-4">
-          {STEPS.map((s, i) => (
-            <div key={s.id} className="flex items-center">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                  i < step
-                    ? "bg-electric text-white"
-                    : i === step
-                    ? "bg-electric/20 text-electric border-2 border-electric"
-                    : "bg-white/5 text-zinc-600"
-                }`}
-              >
-                {i < step ? <Check className="w-4 h-4" /> : i + 1}
-              </div>
-              {i < STEPS.length - 1 && (
-                <div
-                  className={`w-16 sm:w-24 h-0.5 mx-2 transition-all ${
-                    i < step ? "bg-electric" : "bg-white/10"
-                  }`}
-                />
-              )}
-            </div>
-          ))}
+        <div className="h-1 bg-zinc-800">
+          <motion.div
+            className="h-full bg-electric"
+            animate={{ width: `${((step + 1) / STEP_COUNT) * 100}%` }}
+            transition={{ duration: 0.3 }}
+          />
         </div>
 
-        {/* Content */}
-        <div className="bg-void-paper border border-white/10 rounded-2xl overflow-hidden min-h-[440px] flex flex-col">
+        <div className="p-8 min-h-[420px] flex flex-col">
           <AnimatePresence mode="wait">
-            {/* Step 0: Welcome */}
             {step === 0 && (
-              <motion.div
-                key="welcome"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="flex-1 flex flex-col items-center justify-center p-10 text-center"
-              >
-                <Logo size="large" className="justify-center mb-6" />
-                <h1
-                  className="font-outfit font-bold text-3xl text-white mb-3"
-                  data-testid="welcome-title"
-                >
-                  Welcome, {user?.name}!
-                </h1>
-                <p className="text-zinc-400 max-w-md mb-2">
-                  Let's build your first project in under a minute.
-                </p>
-                <p className="text-zinc-500 text-sm max-w-md mb-8">
-                  Our AI agents will design, code, and deploy a full-stack
-                  application from a single prompt.
-                </p>
-                <div className="flex items-center gap-6 text-sm text-zinc-500">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-electric" />
-                    Pick a template
+              <StepWrapper key="welcome">
+                <div className="text-center flex-1 flex flex-col items-center justify-center">
+                  <div className="w-20 h-20 rounded-full bg-electric/10 flex items-center justify-center mb-6">
+                    <Sparkles className="w-10 h-10 text-electric" />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Wand2 className="w-4 h-4 text-purple-400" />
-                    Customize it
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Rocket className="w-4 h-4 text-emerald-400" />
-                    Ship it
+                  <h2 className="font-outfit font-bold text-3xl text-white mb-3" data-testid="onboarding-welcome-title">
+                    Welcome, {user?.name?.split(" ")[0] || "there"}!
+                  </h2>
+                  <p className="text-zinc-400 text-lg max-w-md mb-2">
+                    You're about to experience the future of software engineering.
+                  </p>
+                  <p className="text-zinc-500 text-sm max-w-md">
+                    Let's get you set up in under 60 seconds.
+                  </p>
+                  <div className="flex items-center gap-6 mt-8 text-sm text-zinc-500">
+                    <span className="flex items-center gap-2"><Zap className="w-4 h-4 text-electric" /> 10 free credits</span>
+                    <span className="flex items-center gap-2"><Terminal className="w-4 h-4 text-emerald-400" /> AI-powered</span>
+                    <span className="flex items-center gap-2"><CreditCard className="w-4 h-4 text-purple-400" /> No card needed</span>
                   </div>
                 </div>
-              </motion.div>
+              </StepWrapper>
             )}
 
-            {/* Step 1: Pick Template */}
             {step === 1 && (
-              <motion.div
-                key="template"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="flex-1 p-6"
-              >
-                <h2 className="font-outfit font-bold text-xl text-white mb-1">
-                  What do you want to build?
-                </h2>
-                <p className="text-sm text-zinc-400 mb-5">
-                  Pick a starting point — you can always customize later.
-                </p>
-                <div
-                  className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-[300px] overflow-y-auto pr-1"
-                  data-testid="template-grid"
-                >
-                  {templates.map((t) => {
-                    const Icon = ICON_MAP[t.icon] || Zap;
-                    const isSelected = selectedTemplate?.id === t.id;
-                    return (
+              <StepWrapper key="usecase">
+                <div className="flex-1">
+                  <h2 className="font-outfit font-bold text-2xl text-white mb-2" data-testid="onboarding-usecase-title">
+                    What are you building?
+                  </h2>
+                  <p className="text-zinc-400 mb-6">This helps our AI tailor recommendations for you.</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {USE_CASES.map((uc) => (
                       <button
-                        key={t.id}
-                        onClick={() => setSelectedTemplate(t)}
-                        data-testid={`onboard-template-${t.id}`}
-                        className={`relative text-left p-4 rounded-xl border transition-all ${
-                          isSelected
+                        key={uc.id}
+                        onClick={() => setSelectedUseCase(uc.id)}
+                        className={`p-4 rounded-xl border text-left transition-all ${
+                          selectedUseCase === uc.id
                             ? "border-electric bg-electric/10 shadow-glow"
-                            : "border-white/5 bg-white/[0.02] hover:border-white/15"
+                            : "border-white/10 bg-void hover:border-white/20"
                         }`}
+                        data-testid={`usecase-${uc.id}`}
                       >
-                        {isSelected && (
-                          <div className="absolute top-2 right-2">
-                            <Check className="w-4 h-4 text-electric" />
-                          </div>
-                        )}
-                        <div
-                          className={`w-10 h-10 rounded-lg bg-gradient-to-br ${t.gradient} flex items-center justify-center mb-3`}
-                        >
-                          <Icon className="w-5 h-5 text-white" />
-                        </div>
-                        <p className="text-sm font-medium text-white leading-tight">
-                          {t.name}
-                        </p>
-                        <p className="text-[10px] text-zinc-500 mt-1 line-clamp-2">
-                          {t.description}
-                        </p>
+                        <uc.icon className={`w-5 h-5 mb-2 ${selectedUseCase === uc.id ? "text-electric" : "text-zinc-400"}`} />
+                        <p className="font-medium text-white text-sm">{uc.label}</p>
+                        <p className="text-xs text-zinc-500 mt-0.5">{uc.desc}</p>
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </motion.div>
+              </StepWrapper>
             )}
 
-            {/* Step 2: Customize */}
             {step === 2 && (
-              <motion.div
-                key="customize"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="flex-1 p-6"
-              >
-                <h2 className="font-outfit font-bold text-xl text-white mb-1">
-                  Customize your project
-                </h2>
-                <p className="text-sm text-zinc-400 mb-6">
-                  Fine-tune the name and prompt, or keep the defaults.
-                </p>
-                <div className="space-y-5">
-                  <div>
-                    <label className="text-sm text-zinc-300 mb-2 block">
-                      Project Name
-                    </label>
-                    <Input
-                      value={projectName}
-                      onChange={(e) => setProjectName(e.target.value)}
-                      className="bg-void border-white/10 text-white h-11"
-                      placeholder="My Awesome App"
-                      data-testid="onboard-project-name"
-                    />
+              <StepWrapper key="features">
+                <div className="flex-1">
+                  <h2 className="font-outfit font-bold text-2xl text-white mb-2" data-testid="onboarding-features-title">
+                    Your Toolkit
+                  </h2>
+                  <p className="text-zinc-400 mb-6">Everything you need to go from idea to production.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {FEATURES.map((feat, i) => (
+                      <motion.div
+                        key={feat.title}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.1 }}
+                        className="p-4 rounded-xl border border-white/5 bg-void/50"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`w-9 h-9 rounded-lg ${feat.bg} flex items-center justify-center flex-shrink-0`}>
+                            <feat.icon className={`w-5 h-5 ${feat.color}`} />
+                          </div>
+                          <div>
+                            <p className="font-medium text-white text-sm">{feat.title}</p>
+                            <p className="text-xs text-zinc-500 mt-1 leading-relaxed">{feat.desc}</p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
                   </div>
-                  <div>
-                    <label className="text-sm text-zinc-300 mb-2 block">
-                      AI Prompt
-                    </label>
-                    <textarea
-                      value={customPrompt}
-                      onChange={(e) => setCustomPrompt(e.target.value)}
-                      className="w-full h-32 bg-void border border-white/10 rounded-lg text-white text-sm p-3 resize-none focus:border-electric/50 focus:outline-none transition-colors"
-                      placeholder="Describe what you want to build..."
-                      data-testid="onboard-prompt"
-                    />
-                    <p className="text-[10px] text-zinc-600 mt-1">
-                      The AI agents will use this prompt to generate your full
-                      project.
-                    </p>
-                  </div>
-                  {selectedTemplate && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {selectedTemplate.tech_stack.map((tech) => (
-                        <span
-                          key={tech}
-                          className="px-2.5 py-1 rounded-md text-xs bg-white/5 text-zinc-400 border border-white/5"
-                        >
-                          {tech}
-                        </span>
-                      ))}
-                      <span className="flex items-center gap-1 text-xs text-electric">
-                        <Zap className="w-3 h-3" />~
-                        {selectedTemplate.estimated_credits} credits
-                      </span>
-                    </div>
-                  )}
                 </div>
-              </motion.div>
+              </StepWrapper>
             )}
 
-            {/* Step 3: Generate */}
             {step === 3 && (
-              <motion.div
-                key="generate"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="flex-1 flex flex-col items-center justify-center p-10 text-center"
-              >
-                {generating ? (
-                  <div data-testid="generating-state">
-                    <div className="w-20 h-20 rounded-2xl bg-electric/10 flex items-center justify-center mx-auto mb-6 border border-electric/20">
-                      <Loader2 className="w-10 h-10 text-electric animate-spin" />
-                    </div>
-                    <h2 className="font-outfit font-bold text-xl text-white mb-4">
-                      Building your project...
-                    </h2>
-                    <div className="space-y-2 max-w-sm mx-auto">
-                      {GENERATION_PHASES.map((phase, i) => (
-                        <div
-                          key={phase}
-                          className={`flex items-center gap-3 text-sm transition-all ${
-                            i < generationPhase
-                              ? "text-emerald-400"
-                              : i === generationPhase
-                              ? "text-electric"
-                              : "text-zinc-600"
-                          }`}
-                        >
-                          {i < generationPhase ? (
-                            <Check className="w-4 h-4 flex-shrink-0" />
-                          ) : i === generationPhase ? (
-                            <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
-                          ) : (
-                            <div className="w-4 h-4 rounded-full border border-zinc-700 flex-shrink-0" />
-                          )}
-                          {phase}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div data-testid="pre-generate-state">
-                    <div className="w-20 h-20 rounded-2xl bg-electric/10 flex items-center justify-center mx-auto mb-6 border border-electric/20">
-                      <Sparkles className="w-10 h-10 text-electric" />
-                    </div>
-                    <h2 className="font-outfit font-bold text-xl text-white mb-2">
-                      Ready to generate!
-                    </h2>
-                    <p className="text-zinc-400 text-sm max-w-md mb-6">
-                      Our 6 AI agents (Architect, Frontend, Backend, Security,
-                      QA, DevOps) will build{" "}
-                      <span className="text-white font-medium">
-                        {projectName}
-                      </span>{" "}
-                      for you.
-                    </p>
+              <StepWrapper key="complete">
+                <div className="text-center flex-1 flex flex-col items-center justify-center">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", duration: 0.5 }}
+                    className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-6"
+                  >
+                    <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+                  </motion.div>
+                  <h2 className="font-outfit font-bold text-3xl text-white mb-3" data-testid="onboarding-complete-title">
+                    You're Ready!
+                  </h2>
+                  <p className="text-zinc-400 text-lg max-w-md mb-2">
+                    Your workspace is set up and your AI agents are standing by.
+                  </p>
+                  <p className="text-zinc-500 text-sm max-w-sm">
+                    Create your first project or explore templates to get started.
+                  </p>
+                  <div className="flex flex-col sm:flex-row items-center gap-3 mt-8">
                     <Button
-                      onClick={handleGenerate}
-                      className="bg-electric hover:bg-electric/90 text-white shadow-glow px-8 h-11"
-                      data-testid="onboard-generate-btn"
+                      onClick={handleComplete}
+                      disabled={completing}
+                      className="bg-electric hover:bg-electric/90 text-white shadow-glow px-8 h-12 text-base"
+                      data-testid="onboarding-finish-button"
                     >
-                      <Rocket className="w-4 h-4 mr-2" />
-                      Generate Project
+                      {completing ? "Setting up..." : "Start Building"}
+                      <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                   </div>
-                )}
-              </motion.div>
-            )}
-
-            {/* Step 4: Complete */}
-            {step === 4 && (
-              <motion.div
-                key="complete"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex-1 flex flex-col items-center justify-center p-10 text-center"
-              >
-                <div className="w-20 h-20 rounded-2xl bg-emerald-500/10 flex items-center justify-center mx-auto mb-6 border border-emerald-500/20">
-                  <PartyPopper className="w-10 h-10 text-emerald-400" />
                 </div>
-                <h2
-                  className="font-outfit font-bold text-2xl text-white mb-2"
-                  data-testid="onboard-complete-title"
-                >
-                  Your project is ready!
-                </h2>
-                <p className="text-zinc-400 mb-2">
-                  <span className="text-white font-medium">{projectName}</span>{" "}
-                  has been created with a full AI-generated codebase.
-                </p>
-                <p className="text-zinc-500 text-sm mb-8">
-                  Open it to explore the code, make edits, and deploy.
-                </p>
-                <div className="flex items-center gap-4">
-                  <Button
-                    onClick={handleFinish}
-                    className="bg-electric hover:bg-electric/90 text-white shadow-glow px-6 h-11"
-                    data-testid="onboard-open-project-btn"
-                  >
-                    Open Project
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                  <Button
-                    onClick={onComplete}
-                    variant="ghost"
-                    className="text-zinc-400 hover:text-white"
-                    data-testid="onboard-go-dashboard-btn"
-                  >
-                    Go to Dashboard
-                  </Button>
-                </div>
-              </motion.div>
+              </StepWrapper>
             )}
           </AnimatePresence>
+        </div>
 
-          {/* Footer */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-white/5">
-            <div>
-              {step > 0 && step < 4 && !generating && (
-                <Button
-                  variant="ghost"
-                  onClick={() => setStep(step - 1)}
-                  className="text-zinc-400 hover:text-white"
-                  data-testid="onboard-back-btn"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back
-                </Button>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              {step < 4 && (
-                <Button
-                  variant="ghost"
-                  onClick={handleSkip}
-                  className="text-zinc-500 hover:text-white text-sm"
-                  data-testid="onboard-skip-btn"
-                >
-                  Skip for now
-                </Button>
-              )}
-              {step < 3 && (
-                <Button
-                  onClick={() => setStep(step + 1)}
-                  disabled={step === 1 && !selectedTemplate}
-                  className="bg-electric hover:bg-electric/90 text-white"
-                  data-testid="onboard-next-btn"
-                >
-                  {step === 0 ? "Get Started" : "Continue"}
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              )}
-            </div>
+        {/* Footer */}
+        <div className="px-8 py-4 border-t border-white/5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {Array.from({ length: STEP_COUNT }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-2 h-2 rounded-full transition-all ${
+                  i === step ? "bg-electric w-6" : i < step ? "bg-electric/40" : "bg-zinc-700"
+                }`}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-3">
+            {step > 0 && step < STEP_COUNT - 1 && (
+              <Button variant="ghost" size="sm" onClick={prev} className="text-zinc-400" data-testid="onboarding-prev-button">
+                <ArrowLeft className="w-4 h-4 mr-1" /> Back
+              </Button>
+            )}
+            {step < STEP_COUNT - 1 && (
+              <Button onClick={next} size="sm" className="bg-electric hover:bg-electric/90 text-white" data-testid="onboarding-next-button">
+                {step === 0 ? "Let's Go" : "Continue"} <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            )}
+            {step === 0 && (
+              <button onClick={handleComplete} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors ml-2" data-testid="onboarding-skip-button">
+                Skip
+              </button>
+            )}
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
+  );
+}
+
+function StepWrapper({ children }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      transition={{ duration: 0.2 }}
+      className="flex-1 flex flex-col"
+    >
+      {children}
+    </motion.div>
   );
 }
