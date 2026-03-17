@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 class CursorCodeAPITester:
-    def __init__(self, base_url="https://cursor-workspace.preview.emergentagent.com"):
+    def __init__(self, base_url="https://cursor-ai-builder-1.preview.emergentagent.com"):
         self.base_url = base_url
         self.token = None
         self.user_id = None

@@ -97,6 +97,7 @@ class User(BaseModel):
     github_username: Optional[str] = None
     github_access_token: Optional[str] = None
     avatar_url: Optional[str] = None
+    onboarding_completed: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class UserResponse(BaseModel):
@@ -110,6 +111,7 @@ class UserResponse(BaseModel):
     email_verified: bool
     github_username: Optional[str]
     avatar_url: Optional[str]
+    onboarding_completed: bool
     created_at: str
 
 class TokenResponse(BaseModel):
@@ -292,7 +294,7 @@ def user_to_response(user: User) -> UserResponse:
         id=user.id, email=user.email, name=user.name, plan=user.plan,
         credits=user.credits, credits_used=user.credits_used, is_admin=user.is_admin,
         email_verified=user.email_verified, github_username=user.github_username,
-        avatar_url=user.avatar_url,
+        avatar_url=user.avatar_url, onboarding_completed=user.onboarding_completed,
         created_at=user.created_at.isoformat() if isinstance(user.created_at, datetime) else user.created_at
     )
 
@@ -543,6 +545,11 @@ async def update_user_profile(data: UserUpdateRequest, user: User = Depends(get_
     if isinstance(updated_doc.get('created_at'), str):
         updated_doc['created_at'] = datetime.fromisoformat(updated_doc['created_at'])
     return user_to_response(User(**updated_doc))
+
+@api_router.post("/users/me/complete-onboarding")
+async def complete_onboarding(user: User = Depends(get_current_user)):
+    await db.users.update_one({"id": user.id}, {"$set": {"onboarding_completed": True}})
+    return {"message": "Onboarding completed"}
 
 # ==================== GITHUB OAUTH ROUTES ====================
 
