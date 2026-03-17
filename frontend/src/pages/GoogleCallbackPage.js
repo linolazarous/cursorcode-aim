@@ -1,61 +1,63 @@
-import { useEffect, useState, useCallback } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import Logo from "../components/Logo";
 
-export default function GoogleCallbackPage() {
-  const [searchParams] = useSearchParams();
+// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+export default function AuthCallback() {
+  const hasProcessed = useRef(false);
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  const { refreshUser } = useAuth();
   const [error, setError] = useState(null);
 
-  const handleGoogleCallback = useCallback(async (code) => {
-    try {
-      if (!code) throw new Error("No authorization code received");
-
-      // ✅ Correct endpoint
-      const response = await api.get(`/api/auth/google/callback?code=${code}`);
-
-      const { access_token, refresh_token, user } = response.data;
-
-      // Save tokens
-      localStorage.setItem("access_token", access_token);
-      localStorage.setItem("refresh_token", refresh_token);
-
-      // Update user context
-      setUser(user);
-
-      toast.success(`Welcome, ${user.name}!`);
-      navigate("/dashboard");
-
-    } catch (err) {
-      console.error("Google callback error:", err);
-      setError(
-        err?.response?.data?.detail ||
-        err.message ||
-        "Google authentication failed"
-      );
-    }
-  }, [navigate, setUser]);
-
   useEffect(() => {
-    const code = searchParams.get("code");
-    const errorParam = searchParams.get("error");
+    if (hasProcessed.current) return;
+    hasProcessed.current = true;
 
-    if (errorParam) {
-      setError(
-        searchParams.get("error_description") ||
-        "Google authentication failed"
-      );
+    const hash = window.location.hash;
+    const sessionIdMatch = hash.match(/session_id=([^&]+)/);
+
+    if (!sessionIdMatch) {
+      setError("No session ID received from Google");
       return;
     }
 
-    handleGoogleCallback(code);
-  }, [searchParams, handleGoogleCallback]);
+    const sessionId = sessionIdMatch[1];
+
+    const exchangeSession = async () => {
+      try {
+        const response = await api.post("/auth/google/session", {
+          session_id: sessionId,
+        });
+
+        const { access_token, refresh_token, user } = response.data;
+
+        localStorage.setItem("access_token", access_token);
+        localStorage.setItem("refresh_token", refresh_token);
+
+        await refreshUser();
+
+        toast.success(`Welcome, ${user.name}!`);
+
+        // Clean URL and navigate
+        window.history.replaceState(null, "", "/dashboard");
+        navigate("/dashboard", { replace: true });
+      } catch (err) {
+        console.error("Google auth error:", err);
+        setError(
+          err?.response?.data?.detail ||
+            err.message ||
+            "Google authentication failed"
+        );
+      }
+    };
+
+    exchangeSession();
+  }, [navigate, refreshUser]);
 
   if (error) {
     return (
@@ -66,17 +68,15 @@ export default function GoogleCallbackPage() {
           className="max-w-md w-full text-center"
         >
           <Logo size="large" className="justify-center mb-8" />
-
           <div className="bg-void-paper border border-red-500/20 rounded-xl p-8">
             <h2 className="font-outfit font-bold text-2xl text-white mb-2">
               Authentication Failed
             </h2>
-
             <p className="text-red-400 mb-6">{error}</p>
-
             <button
               onClick={() => navigate("/login")}
               className="text-electric hover:underline"
+              data-testid="back-to-login"
             >
               Back to Login
             </button>
@@ -94,13 +94,10 @@ export default function GoogleCallbackPage() {
         className="text-center"
       >
         <Logo size="large" className="justify-center mb-8" />
-
         <Loader2 className="w-12 h-12 text-electric mx-auto mb-4 animate-spin" />
-
         <h2 className="font-outfit font-bold text-xl text-white mb-2">
-          Connecting to Google...
+          Connecting your Google account...
         </h2>
-
         <p className="text-zinc-400">
           Please wait while we complete authentication
         </p>

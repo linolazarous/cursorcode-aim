@@ -71,14 +71,13 @@ export default function LoginPage() {
   };
 
   // =====================================================
-  // GOOGLE LOGIN
+  // GOOGLE LOGIN - REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
   // =====================================================
   const handleGoogleLogin = () => {
     if (googleLoading) return;
-
     setGoogleLoading(true);
-
-    window.location.href = `${BACKEND_URL}/api/auth/google`;
+    const redirectUrl = window.location.origin + '/dashboard';
+    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   };
 
   return (
