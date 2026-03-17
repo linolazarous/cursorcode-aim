@@ -208,9 +208,8 @@ export default function PricingPage() {
           </h1>
 
           <p className="text-zinc-400 max-w-2xl mx-auto">
-            Build apps faster using AI agents powered by
-            advanced models like{" "}
-            2.
+            Build apps faster using AI agents powered by xAI Grok models.
+
           </p>
 
         </motion.div>
