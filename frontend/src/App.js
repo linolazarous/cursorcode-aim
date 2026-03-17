@@ -13,6 +13,7 @@ import AdminPage from "./pages/AdminPage";
 import PricingPage from "./pages/PricingPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
 import GitHubCallbackPage from "./pages/GitHubCallbackPage";
+import GoogleCallbackPage from "./pages/GoogleCallbackPage";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -49,6 +50,7 @@ function App() {
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />
+          <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
 
           {/* Protected Routes */}
           <Route

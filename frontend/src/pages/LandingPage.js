@@ -674,7 +674,7 @@ export default function LandingPage() {
               </a>
             </div>
             <div className="text-sm text-zinc-500">
-              © 2025 CursorCode AI. All rights reserved.
+              © {new Date().getFullYear()} CursorCode AI. All rights reserved.
             </div>
           </div>
         </div>

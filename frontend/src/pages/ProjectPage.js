@@ -29,6 +29,7 @@ import {
   File,
   RefreshCw,
   ExternalLink,
+  Sparkles,
 } from "lucide-react";
 import Logo from "../components/Logo";
 import {
