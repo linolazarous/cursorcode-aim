@@ -38,24 +38,28 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Custom colors from design guidelines
         void: {
-          DEFAULT: "#050505",
-          paper: "#09090B",
-          subtle: "#18181B",
+          DEFAULT: "#0a0e1a",
+          paper: "#0d1425",
+          subtle: "#141f30",
         },
         electric: {
-          DEFAULT: "#3B82F6",
-          hover: "#2563EB",
-          glow: "rgba(59, 130, 246, 0.3)",
+          DEFAULT: "#00b4ff",
+          hover: "#0090dd",
+          glow: "rgba(0, 180, 255, 0.3)",
+          dim: "#005f8a",
         },
         emerald: {
           DEFAULT: "#10B981",
           glow: "rgba(16, 185, 129, 0.5)",
         },
+        cyber: {
+          DEFAULT: "#00e5ff",
+          dim: "rgba(0, 229, 255, 0.08)",
+        },
         zinc: {
-          750: "#2D2D30",
-          850: "#1A1A1C",
+          750: "#2a3040",
+          850: "#151c2a",
         },
       },
       fontFamily: {
@@ -94,8 +98,12 @@ module.exports = {
           "50%": { transform: "translateY(-10px)" },
         },
         "pulse-glow": {
-          "0%, 100%": { boxShadow: "0 0 20px rgba(59, 130, 246, 0.3)" },
-          "50%": { boxShadow: "0 0 40px rgba(59, 130, 246, 0.5)" },
+          "0%, 100%": { boxShadow: "0 0 20px rgba(0, 180, 255, 0.3)" },
+          "50%": { boxShadow: "0 0 40px rgba(0, 180, 255, 0.6)" },
+        },
+        "cyber-scan": {
+          "0%": { backgroundPosition: "0% 0%" },
+          "100%": { backgroundPosition: "0% 100%" },
         },
       },
       animation: {
@@ -106,16 +114,21 @@ module.exports = {
         "slide-in-right": "slide-in-right 0.3s ease-out forwards",
         float: "float 3s ease-in-out infinite",
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
+        "cyber-scan": "cyber-scan 8s linear infinite",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "hero-glow":
-          "radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.15) 0%, rgba(5, 5, 5, 0) 70%)",
+          "radial-gradient(circle at 50% 50%, rgba(0, 180, 255, 0.12) 0%, rgba(10, 14, 26, 0) 70%)",
+        "cyber-grid":
+          "linear-gradient(rgba(0, 180, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 180, 255, 0.03) 1px, transparent 1px)",
       },
       boxShadow: {
-        glow: "0 0 30px rgba(59, 130, 246, 0.3)",
-        "glow-lg": "0 0 60px rgba(59, 130, 246, 0.4)",
+        glow: "0 0 30px rgba(0, 180, 255, 0.3)",
+        "glow-lg": "0 0 60px rgba(0, 180, 255, 0.4)",
         "glow-green": "0 0 30px rgba(16, 185, 129, 0.3)",
+        "glow-intense": "0 0 20px rgba(0, 180, 255, 0.4), 0 0 60px rgba(0, 180, 255, 0.15)",
+        "cyber-border": "inset 0 0 30px rgba(0, 180, 255, 0.05), 0 0 20px rgba(0, 180, 255, 0.1)",
       },
     },
   },
