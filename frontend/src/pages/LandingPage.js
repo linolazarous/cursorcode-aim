@@ -20,10 +20,16 @@ import {
   Play,
   ShieldCheck,
   Lock,
+  Clock,
+  Users,
+  Star,
+  Quote,
 } from "lucide-react";
 import Logo from "../components/Logo";
 import DemoVideoModal from "../components/DemoVideoModal";
 import NeuralBackground from "../components/NeuralBackground";
+import AnimatedCounter from "../components/AnimatedCounter";
+import RotatingText from "../components/RotatingText";
 
 const PRICING_PLANS = [
   {
@@ -319,11 +325,10 @@ export default function LandingPage() {
                 variants={fadeUpVariants}
                 className="font-outfit font-bold text-4xl sm:text-5xl lg:text-6xl text-white leading-tight mb-6"
               >
-                Build Anything.
+                Build{" "}
+                <RotatingText />
                 <br />
-                <span className="text-electric">Automatically.</span>
-                <br />
-                With AI.
+                <span className="text-white/90">in minutes, not months.</span>
               </motion.h1>
 
               <motion.p
@@ -332,8 +337,8 @@ export default function LandingPage() {
                 className="text-lg text-zinc-400 max-w-xl mb-8"
               >
                 CursorCode AI is the world's most powerful autonomous software
-                engineering platform. Turn plain English into production-ready,
-                deployed applications.
+                engineering platform. Describe what you want — our 7 AI agents
+                design, build, test, and deploy it for you.
               </motion.p>
 
               <motion.div
@@ -452,10 +457,10 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
-              { value: "50K+", label: "Apps Built" },
-              { value: "99.9%", label: "Uptime SLA" },
-              { value: "7", label: "AI Agents" },
-              { value: "<60s", label: "Avg. Deploy Time" },
+              { value: "50,000", suffix: "+", label: "Apps Built", icon: Code2 },
+              { value: "99.9", suffix: "%", label: "Uptime SLA", icon: Shield },
+              { value: "7", suffix: "", label: "AI Agents", icon: Bot },
+              { prefix: "<", value: "60", suffix: "s", label: "Avg. Deploy Time", icon: Clock },
             ].map((stat, i) => (
               <motion.div
                 key={stat.label}
@@ -465,8 +470,11 @@ export default function LandingPage() {
                 transition={{ delay: i * 0.1 }}
                 className="text-center"
               >
-                <div className="font-outfit font-bold text-3xl md:text-4xl text-white mb-1">
-                  {stat.value}
+                <div className="flex justify-center mb-2">
+                  <stat.icon className="w-5 h-5 text-electric/50" />
+                </div>
+                <div className="font-outfit font-bold text-3xl md:text-4xl text-white mb-1" data-testid={`stat-value-${i}`}>
+                  <AnimatedCounter value={stat.value} suffix={stat.suffix} prefix={stat.prefix || ""} duration={1800 + i * 200} />
                 </div>
                 <div className="text-sm text-zinc-500">{stat.label}</div>
               </motion.div>
@@ -687,6 +695,171 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Comparison Section */}
+      <section className="py-20 lg:py-32 relative border-t border-white/5">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white mb-4">
+              Not just a tool — <span className="text-electric">a full AI team</span>
+            </h2>
+            <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+              See how CursorCode AI compares to traditional software development.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Traditional */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="p-8 rounded-xl border border-white/5 bg-void-paper/30"
+              data-testid="comparison-traditional"
+            >
+              <div className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">Traditional Development</div>
+              <ul className="space-y-4">
+                {[
+                  { text: "Hire 4-6 developers", time: "2-4 weeks" },
+                  { text: "Architecture planning", time: "1-2 weeks" },
+                  { text: "Frontend development", time: "4-8 weeks" },
+                  { text: "Backend + API development", time: "4-8 weeks" },
+                  { text: "Testing & QA", time: "2-4 weeks" },
+                  { text: "Deployment & DevOps", time: "1-2 weeks" },
+                ].map((item) => (
+                  <li key={item.text} className="flex items-center justify-between">
+                    <span className="text-zinc-400 text-sm">{item.text}</span>
+                    <span className="text-sm text-zinc-500 font-mono">{item.time}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between">
+                <span className="text-zinc-400 font-medium">Total</span>
+                <span className="text-white font-outfit font-bold text-lg">14-28 weeks</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-zinc-400 font-medium">Cost</span>
+                <span className="text-white font-outfit font-bold text-lg">$50K - $200K+</span>
+              </div>
+            </motion.div>
+
+            {/* CursorCode AI */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="p-8 rounded-xl border border-electric/30 bg-electric/5 shadow-glow relative"
+              data-testid="comparison-cursorcode"
+            >
+              <div className="absolute -top-3 left-6 px-3 py-1 rounded-full bg-electric text-xs font-bold text-white uppercase tracking-wider">
+                With CursorCode AI
+              </div>
+              <div className="text-sm font-medium text-electric uppercase tracking-wider mb-4 mt-1">CursorCode AI</div>
+              <ul className="space-y-4">
+                {[
+                  { text: "Describe your app in English", time: "30 seconds" },
+                  { text: "AI architects your system", time: "~10 seconds" },
+                  { text: "7 agents build in parallel", time: "~45 seconds" },
+                  { text: "Auto security audit & testing", time: "~15 seconds" },
+                  { text: "One-click deploy", time: "~10 seconds" },
+                  { text: "Iterate with natural language", time: "Instant" },
+                ].map((item) => (
+                  <li key={item.text} className="flex items-center justify-between">
+                    <span className="text-zinc-300 text-sm">{item.text}</span>
+                    <span className="text-sm text-electric font-mono font-medium">{item.time}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-6 pt-4 border-t border-electric/20 flex items-center justify-between">
+                <span className="text-zinc-300 font-medium">Total</span>
+                <span className="text-electric font-outfit font-bold text-lg">Under 2 minutes</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-zinc-300 font-medium">Cost</span>
+                <span className="text-electric font-outfit font-bold text-lg">From $0/month</span>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section className="py-20 lg:py-32 relative border-t border-white/5 bg-void-paper/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="font-outfit font-bold text-3xl sm:text-4xl text-white mb-4">
+              Loved by builders worldwide
+            </h2>
+            <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+              Developers, founders, and teams trust CursorCode AI to ship faster.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              {
+                quote: "CursorCode AI built my entire SaaS MVP in under 2 minutes. What would have taken my team 3 months was done before my coffee got cold.",
+                name: "Sarah Chen",
+                role: "Founder, DataPulse",
+                rating: 5,
+              },
+              {
+                quote: "The multi-agent architecture is unlike anything else. It's not just generating code — it's engineering complete systems with proper security and testing.",
+                name: "Marcus Rodriguez",
+                role: "CTO, ScaleForge",
+                rating: 5,
+              },
+              {
+                quote: "We replaced our $180K/year junior dev budget with CursorCode AI Pro. The code quality is better and deployments happen in seconds.",
+                name: "James Park",
+                role: "VP Engineering, NovaTech",
+                rating: 5,
+              },
+            ].map((testimonial, index) => (
+              <motion.div
+                key={testimonial.name}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.15 }}
+                className="p-8 rounded-xl border border-white/5 bg-void-paper/50 cyber-border-hover"
+                data-testid={`testimonial-${index}`}
+              >
+                <div className="flex gap-1 mb-4">
+                  {Array.from({ length: testimonial.rating }).map((_, i) => (
+                    <Star key={i} className="w-4 h-4 fill-electric text-electric" />
+                  ))}
+                </div>
+                <Quote className="w-8 h-8 text-electric/20 mb-3" />
+                <p className="text-zinc-300 text-sm leading-relaxed mb-6">
+                  "{testimonial.quote}"
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-electric/30 to-emerald/30 flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">
+                      {testimonial.name.split(" ").map(n => n[0]).join("")}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-white text-sm font-medium">{testimonial.name}</div>
+                    <div className="text-zinc-500 text-xs">{testimonial.role}</div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Pricing Section */}
       <section id="pricing" className="py-20 lg:py-32 relative border-t border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -775,21 +948,33 @@ export default function LandingPage() {
             viewport={{ once: true }}
           >
             <h2 className="font-outfit font-bold text-3xl sm:text-4xl lg:text-5xl text-white mb-6">
-              Ready to build the future?
+              The future of software engineering <span className="text-electric">starts now</span>
             </h2>
-            <p className="text-lg text-zinc-400 mb-8 max-w-2xl mx-auto">
+            <p className="text-lg text-zinc-400 mb-4 max-w-2xl mx-auto">
               Join thousands of developers and teams using CursorCode AI to ship
-              faster than ever.
+              faster than ever before.
             </p>
-            <Button
-              size="lg"
-              onClick={() => navigate(isAuthenticated ? "/dashboard" : "/signup")}
-              className="bg-electric hover:bg-electric/90 text-white px-10 py-6 text-lg shadow-glow btn-glow"
-              data-testid="final-cta-btn"
-            >
-              Start Building Free
-              <ArrowRight className="ml-2 w-5 h-5" />
-            </Button>
+            <p className="text-sm text-zinc-500 mb-8">No credit card required. 10 free AI credits included.</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button
+                size="lg"
+                onClick={() => navigate(isAuthenticated ? "/dashboard" : "/signup")}
+                className="bg-electric hover:bg-electric/90 text-white px-10 py-6 text-lg shadow-glow btn-glow"
+                data-testid="final-cta-btn"
+              >
+                Start Building Free
+                <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={() => navigate("/pricing")}
+                className="border-white/10 text-white hover:bg-white/5 px-10 py-6 text-lg"
+                data-testid="final-pricing-btn"
+              >
+                View Pricing
+              </Button>
+            </div>
           </motion.div>
         </div>
       </section>
