@@ -11,12 +11,12 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
 
 ## Design System
 - **Theme:** Cybersecurity / deep-tech aesthetic
-- **Background:** Deep navy #0a0e1a (void), #0d1425 (paper), #141f30 (subtle)
-- **Accent:** Bright cyan-blue #00b4ff (electric), with glow effects
+- **Background:** Deep navy #0a0e1a, #0d1425, #141f30
+- **Accent:** Bright cyan-blue #00b4ff with glow effects
 - **Typography:** Outfit (headings), Inter (body), JetBrains Mono (code)
-- **Effects:** Glass-morphism, noise textures, cyber grid patterns, animated neural particle background (NeuralBackground.js), scan-line animations, pulse glows, cyber-border-hover
+- **Effects:** Glass-morphism, neural particle backgrounds, cyber grid, scan-line animations, pulse glows
 
-## Completed Features (25+ features, 100% tested across 15 iterations)
+## Completed Features (25+ features, 100% tested across 16 iterations)
 1. User auth (signup, login, JWT, refresh tokens)
 2. GitHub OAuth + Google OAuth2 (standard flow with colored SVG icons)
 3. User/Admin dashboards with project CRUD
@@ -32,6 +32,7 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
     - Neural particle background (canvas, mouse-interactive)
     - Rotating hero text cycling app types
     - Animated counter stats strip (IntersectionObserver)
+    - **Interactive Live Demo** (prompt input, 6 agent simulation, code streaming, file tree, agent log, completion CTA)
     - Comparison section (Traditional Dev vs CursorCode AI)
     - Testimonials section (3 cards, star ratings)
     - Architecture Graph with animated agents
@@ -52,6 +53,12 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
 24. Privacy, Terms, Contact pages (real content, real routing)
 25. Production-grade Demo Mode (realistic multi-file AI output for all 6 agents)
 
+## Key Components
+- `NeuralBackground.js` — Canvas particle network with mouse interaction
+- `AnimatedCounter.js` — IntersectionObserver count-up animation
+- `RotatingText.js` — AnimatePresence cycling hero text
+- `LiveDemo.js` — Full interactive code generation demo (SIMULATED, no backend)
+
 ## DB Collections
 users, projects, project_messages, project_activities, project_snapshots, deployments, subscriptions, credit_usage, webhook_events, payments
 
@@ -63,4 +70,4 @@ users, projects, project_messages, project_activities, project_snapshots, deploy
 ## Pending
 - P1: Backend refactoring (server.py is 2500+ lines monolith)
 - P2: Real deployment hosting, email verification enforcement
-- Mocked: Deployment simulation, Contact form email, AI demo mode (until XAI_API_KEY set)
+- Mocked: Deployment simulation, Contact form email, AI demo mode (until XAI_API_KEY set), LiveDemo (frontend-only simulation)
