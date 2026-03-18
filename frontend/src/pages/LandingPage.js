@@ -766,15 +766,15 @@ export default function LandingPage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <Logo size="default" />
             <div className="flex items-center gap-6 text-sm text-zinc-500">
-              <a href="#" className="hover:text-white transition-colors">
+              <Link to="/privacy" className="hover:text-white transition-colors">
                 Privacy
-              </a>
-              <a href="#" className="hover:text-white transition-colors">
+              </Link>
+              <Link to="/terms" className="hover:text-white transition-colors">
                 Terms
-              </a>
-              <a href="#" className="hover:text-white transition-colors">
+              </Link>
+              <Link to="/contact" className="hover:text-white transition-colors">
                 Contact
-              </a>
+              </Link>
             </div>
             <div className="text-sm text-zinc-500">
               &copy; {new Date().getFullYear()} CursorCode AI. All rights reserved.
