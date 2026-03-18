@@ -9,9 +9,16 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
 - **AI:** xAI Grok (3 model tiers) with 6-agent multi-agent pipeline
 - **3rd Party:** Stripe, SendGrid, GitHub OAuth, Google OAuth2 (standard)
 
-## Completed Features (25+ features, 100% tested across 12 iterations)
+## Design System
+- **Theme:** Cybersecurity / deep-tech aesthetic
+- **Background:** Deep navy #0a0e1a (void), #0d1425 (paper), #141f30 (subtle)
+- **Accent:** Bright cyan-blue #00b4ff (electric), with glow effects
+- **Typography:** Outfit (headings), Inter (body), JetBrains Mono (code)
+- **Effects:** Glass-morphism, noise textures, cyber grid patterns, scan-line animations, pulse glows
+
+## Completed Features (25+ features, 100% tested across 13 iterations)
 1. User auth (signup, login, JWT, refresh tokens)
-2. GitHub OAuth + Google OAuth2 (standard flow)
+2. GitHub OAuth + Google OAuth2 (standard flow with colored SVG icons)
 3. User/Admin dashboards with project CRUD
 4. Project Templates Gallery (filterable)
 5. Template Preview Mode (interactive mockups)
@@ -45,6 +52,6 @@ users, projects, project_messages, project_activities, project_snapshots, deploy
 - **Database:** MongoDB Atlas (production)
 
 ## Pending
-- P1: Backend refactoring (server.py is 2500+ lines monolith)
+- P1: Backend refactoring (server.py is 2500+ lines monolith → routes/, models/, services/)
 - P2: Real deployment hosting, email verification enforcement, community templates
 - Mocked: Deployment simulation, Contact form email, AI demo mode (until XAI_API_KEY set)
