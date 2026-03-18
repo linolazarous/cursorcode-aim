@@ -151,6 +151,12 @@ class Project(BaseModel):
     deployed_url: Optional[str] = None
     deployment_id: Optional[str] = None
     github_repo: Optional[str] = None
+    # Share
+    is_public: bool = False
+    share_id: Optional[str] = None
+    view_count: int = 0
+    # Owner info for shared view
+    owner_name: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -166,6 +172,9 @@ class ProjectResponse(BaseModel):
     deployed_url: Optional[str]
     deployment_id: Optional[str]
     github_repo: Optional[str]
+    is_public: bool = False
+    share_id: Optional[str] = None
+    view_count: int = 0
     created_at: str
     updated_at: str
 
@@ -338,7 +347,8 @@ def project_to_response(project: Project) -> ProjectResponse:
         description=project.description, prompt=project.prompt, status=project.status,
         files=project.files, tech_stack=project.tech_stack,
         deployed_url=project.deployed_url, deployment_id=project.deployment_id,
-        github_repo=project.github_repo,
+        github_repo=project.github_repo, is_public=project.is_public,
+        share_id=project.share_id, view_count=project.view_count,
         created_at=project.created_at.isoformat() if isinstance(project.created_at, datetime) else project.created_at,
         updated_at=project.updated_at.isoformat() if isinstance(project.updated_at, datetime) else project.updated_at
     )
@@ -1260,6 +1270,9 @@ async def generate_stream(
         # Signal completion with final file list
         yield f"data: {json.dumps({'type': 'complete', 'files': list(existing_files.keys()), 'credits_used': credits_needed})}\n\n"
 
+        # Log activity
+        await log_activity(project_id, user.id, "ai_build", f"Multi-agent build: {len(existing_files)} files generated using {model}")
+
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
@@ -1323,6 +1336,231 @@ async def delete_deployment(deployment_id: str, user: User = Depends(get_current
     )
     await db.deployments.delete_one({"id": deployment_id})
     return {"message": "Deployment deleted"}
+
+# ==================== SHARE PROJECT ROUTES ====================
+
+@api_router.post("/projects/{project_id}/share")
+async def toggle_share(project_id: str, user: User = Depends(get_current_user)):
+    """Toggle project public sharing. Returns share_id for the public link."""
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    is_public = not project_doc.get("is_public", False)
+    share_id = project_doc.get("share_id") or secrets.token_urlsafe(12)
+    await db.projects.update_one(
+        {"id": project_id},
+        {"$set": {"is_public": is_public, "share_id": share_id, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    # Log activity
+    await log_activity(project_id, user.id, "shared" if is_public else "unshared", f"Project {'shared publicly' if is_public else 'set to private'}")
+    return {"is_public": is_public, "share_id": share_id, "share_url": f"{FRONTEND_URL}/shared/{share_id}"}
+
+@api_router.get("/shared/{share_id}")
+async def get_shared_project(share_id: str):
+    """Public endpoint - no auth required. Returns project for shared view."""
+    project_doc = await db.projects.find_one({"share_id": share_id, "is_public": True}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found or not shared")
+    # Increment view count
+    await db.projects.update_one({"share_id": share_id}, {"$inc": {"view_count": 1}})
+    # Get owner name
+    owner = await db.users.find_one({"id": project_doc["user_id"]}, {"_id": 0, "name": 1})
+    # Return safe subset (no internal docs)
+    code_files = {k: v for k, v in project_doc.get("files", {}).items() if not k.startswith("_docs/")}
+    return {
+        "name": project_doc["name"],
+        "description": project_doc["description"],
+        "status": project_doc["status"],
+        "files": code_files,
+        "tech_stack": project_doc.get("tech_stack", []),
+        "deployed_url": project_doc.get("deployed_url"),
+        "view_count": project_doc.get("view_count", 0) + 1,
+        "owner_name": owner.get("name", "Anonymous") if owner else "Anonymous",
+        "created_at": project_doc.get("created_at", ""),
+        "share_id": share_id,
+    }
+
+# ==================== AI CONVERSATION HISTORY ====================
+
+@api_router.get("/projects/{project_id}/messages")
+async def get_project_messages(project_id: str, user: User = Depends(get_current_user)):
+    """Get AI conversation history for a project."""
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    messages = await db.project_messages.find({"project_id": project_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return messages
+
+@api_router.post("/projects/{project_id}/messages")
+async def save_project_message(project_id: str, data: Dict[str, Any], user: User = Depends(get_current_user)):
+    """Save an AI conversation message."""
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    message = {
+        "id": str(uuid.uuid4()),
+        "project_id": project_id,
+        "type": data.get("type", "user"),
+        "content": data.get("content", ""),
+        "agent": data.get("agent"),
+        "label": data.get("label"),
+        "status": data.get("status"),
+        "files_count": data.get("files_count"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.project_messages.insert_one(message)
+    return {"id": message["id"]}
+
+@api_router.delete("/projects/{project_id}/messages")
+async def clear_project_messages(project_id: str, user: User = Depends(get_current_user)):
+    """Clear all messages for a project."""
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    await db.project_messages.delete_many({"project_id": project_id})
+    return {"message": "Messages cleared"}
+
+# ==================== PROMPT TEMPLATES ====================
+
+PROMPT_TEMPLATES = [
+    {"id": "saas", "name": "SaaS Application", "category": "business", "icon": "layout",
+     "prompt": "Build a complete SaaS application with user authentication (signup/login/OAuth), subscription billing with Stripe, user dashboard with analytics, admin panel, settings page, and a modern landing page with pricing section.",
+     "tags": ["auth", "stripe", "dashboard", "admin"]},
+    {"id": "ecommerce", "name": "E-Commerce Store", "category": "business", "icon": "shopping-cart",
+     "prompt": "Build a modern e-commerce store with product catalog, shopping cart, checkout with Stripe payments, order management, user accounts, product search/filtering, responsive design, and an admin dashboard for managing products and orders.",
+     "tags": ["payments", "catalog", "cart", "orders"]},
+    {"id": "dashboard", "name": "Analytics Dashboard", "category": "data", "icon": "bar-chart",
+     "prompt": "Build a real-time analytics dashboard with interactive charts (line, bar, pie), data tables with sorting/filtering, date range picker, export to CSV, dark theme, responsive grid layout, and a sidebar navigation.",
+     "tags": ["charts", "tables", "real-time", "export"]},
+    {"id": "chat", "name": "Chat Application", "category": "social", "icon": "message-circle",
+     "prompt": "Build a real-time chat application with private messaging, group channels, message history, online/offline status, typing indicators, file sharing, emoji support, and a clean modern UI.",
+     "tags": ["real-time", "messaging", "channels"]},
+    {"id": "blog", "name": "Blog Platform", "category": "content", "icon": "file-text",
+     "prompt": "Build a full-featured blog platform with markdown editor, image uploads, categories/tags, comments system, RSS feed, SEO optimization, author profiles, and a responsive reading experience.",
+     "tags": ["markdown", "cms", "seo", "comments"]},
+    {"id": "crm", "name": "CRM System", "category": "business", "icon": "users",
+     "prompt": "Build a CRM (Customer Relationship Management) system with contact management, deal pipeline (kanban board), email integration, activity timeline, task management, reporting dashboard, and team collaboration features.",
+     "tags": ["contacts", "pipeline", "tasks", "reports"]},
+    {"id": "api", "name": "REST API Backend", "category": "developer", "icon": "server",
+     "prompt": "Build a production-ready REST API with FastAPI including JWT authentication, CRUD operations, database models with relationships, pagination, filtering, rate limiting, API documentation (OpenAPI/Swagger), and comprehensive error handling.",
+     "tags": ["fastapi", "jwt", "crud", "docs"]},
+    {"id": "portfolio", "name": "Developer Portfolio", "category": "personal", "icon": "briefcase",
+     "prompt": "Build a stunning developer portfolio website with hero section, project showcase with filtering, skills visualization, blog section, contact form, dark/light mode, smooth animations, and responsive design.",
+     "tags": ["portfolio", "animations", "responsive"]},
+]
+
+@api_router.get("/prompt-templates")
+async def get_prompt_templates():
+    return PROMPT_TEMPLATES
+
+# ==================== PROJECT EXPORT ====================
+
+@api_router.get("/projects/{project_id}/export")
+async def export_project(project_id: str, user: User = Depends(get_current_user)):
+    """Generate a downloadable ZIP of project files."""
+    import zipfile
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    files = project_doc.get("files", {})
+    if not files:
+        raise HTTPException(status_code=400, detail="No files to export")
+    buf = BytesIO()
+    project_name = project_doc["name"].replace(" ", "-").lower()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, content in files.items():
+            zf.writestr(f"{project_name}/{fname}", content)
+        # Add README
+        readme = f"# {project_doc['name']}\n\n{project_doc.get('description', '')}\n\nGenerated by CursorCode AI\n"
+        zf.writestr(f"{project_name}/README.md", readme)
+    buf.seek(0)
+    await log_activity(project_id, user.id, "exported", f"Project exported as ZIP ({len(files)} files)")
+    return StreamingResponse(buf, media_type="application/zip",
+                             headers={"Content-Disposition": f'attachment; filename="{project_name}.zip"'})
+
+# ==================== ACTIVITY TIMELINE ====================
+
+async def log_activity(project_id: str, user_id: str, action: str, detail: str = ""):
+    """Helper to log project activity."""
+    activity = {
+        "id": str(uuid.uuid4()),
+        "project_id": project_id,
+        "user_id": user_id,
+        "action": action,
+        "detail": detail,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.project_activities.insert_one(activity)
+
+@api_router.get("/projects/{project_id}/activity")
+async def get_project_activity(project_id: str, user: User = Depends(get_current_user)):
+    """Get activity timeline for a project."""
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    activities = await db.project_activities.find({"project_id": project_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return activities
+
+# ==================== VERSION SNAPSHOTS ====================
+
+@api_router.post("/projects/{project_id}/snapshots")
+async def create_snapshot(project_id: str, data: Dict[str, Any], user: User = Depends(get_current_user)):
+    """Save a version snapshot of the project files."""
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    # Count existing snapshots
+    count = await db.project_snapshots.count_documents({"project_id": project_id})
+    snapshot = {
+        "id": str(uuid.uuid4()),
+        "project_id": project_id,
+        "user_id": user.id,
+        "label": data.get("label", f"Snapshot #{count + 1}"),
+        "files": project_doc.get("files", {}),
+        "file_count": len(project_doc.get("files", {})),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.project_snapshots.insert_one(snapshot)
+    await log_activity(project_id, user.id, "snapshot", f"Created snapshot: {snapshot['label']}")
+    return {"id": snapshot["id"], "label": snapshot["label"], "file_count": snapshot["file_count"], "created_at": snapshot["created_at"]}
+
+@api_router.get("/projects/{project_id}/snapshots")
+async def list_snapshots(project_id: str, user: User = Depends(get_current_user)):
+    """List all version snapshots for a project."""
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    snapshots = await db.project_snapshots.find(
+        {"project_id": project_id}, {"_id": 0, "files": 0}
+    ).sort("created_at", -1).to_list(50)
+    return snapshots
+
+@api_router.post("/projects/{project_id}/snapshots/{snapshot_id}/restore")
+async def restore_snapshot(project_id: str, snapshot_id: str, user: User = Depends(get_current_user)):
+    """Restore project files from a snapshot."""
+    project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+    if not project_doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    snapshot = await db.project_snapshots.find_one({"id": snapshot_id, "project_id": project_id}, {"_id": 0})
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    # Auto-save current state before restoring
+    count = await db.project_snapshots.count_documents({"project_id": project_id})
+    auto_snapshot = {
+        "id": str(uuid.uuid4()), "project_id": project_id, "user_id": user.id,
+        "label": f"Auto-save before restore #{count + 1}",
+        "files": project_doc.get("files", {}),
+        "file_count": len(project_doc.get("files", {})),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.project_snapshots.insert_one(auto_snapshot)
+    # Restore
+    await db.projects.update_one(
+        {"id": project_id},
+        {"$set": {"files": snapshot["files"], "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    await log_activity(project_id, user.id, "restored", f"Restored from: {snapshot.get('label', 'unknown')}")
+    return {"message": f"Restored from: {snapshot.get('label')}", "file_count": len(snapshot.get("files", {}))}
 
 # ==================== SUBSCRIPTION ROUTES ====================
 

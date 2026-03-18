@@ -18,6 +18,7 @@ import GitHubCallbackPage from "./pages/GitHubCallbackPage";
 import GoogleCallbackPage from "./pages/GoogleCallbackPage";
 import TemplatesPage from "./pages/TemplatesPage";
 import TemplatePreviewPage from "./pages/TemplatePreviewPage";
+import SharedProjectPage from "./pages/SharedProjectPage";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -63,6 +64,7 @@ function App() {
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />
           <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
+          <Route path="/shared/:shareId" element={<SharedProjectPage />} />
 
           {/* Protected Routes */}
           <Route
