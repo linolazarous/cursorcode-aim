@@ -1,63 +1,55 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import api from "../lib/api";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import Logo from "../components/Logo";
 
-// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-export default function AuthCallback() {
-  const hasProcessed = useRef(false);
+export default function GoogleCallbackPage() {
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
+  const hasProcessed = useRef(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     if (hasProcessed.current) return;
     hasProcessed.current = true;
 
-    const hash = window.location.hash;
-    const sessionIdMatch = hash.match(/session_id=([^&]+)/);
+    const code = searchParams.get("code");
+    const errorParam = searchParams.get("error");
 
-    if (!sessionIdMatch) {
-      setError("No session ID received from Google");
+    if (errorParam) {
+      setError(searchParams.get("error_description") || "Google authentication failed");
       return;
     }
 
-    const sessionId = sessionIdMatch[1];
+    if (code) {
+      handleGoogleCallback(code);
+    } else {
+      setError("No authorization code received from Google");
+    }
+  }, [searchParams]);
 
-    const exchangeSession = async () => {
-      try {
-        const response = await api.post("/auth/google/session", {
-          session_id: sessionId,
-        });
+  const handleGoogleCallback = async (code) => {
+    try {
+      const response = await api.post("/auth/google/callback", { code });
+      const { access_token, refresh_token, user } = response.data;
 
-        const { access_token, refresh_token, user } = response.data;
+      localStorage.setItem("access_token", access_token);
+      localStorage.setItem("refresh_token", refresh_token);
 
-        localStorage.setItem("access_token", access_token);
-        localStorage.setItem("refresh_token", refresh_token);
+      await refreshUser();
 
-        await refreshUser();
-
-        toast.success(`Welcome, ${user.name}!`);
-
-        // Clean URL and navigate
-        window.history.replaceState(null, "", "/dashboard");
-        navigate("/dashboard", { replace: true });
-      } catch (err) {
-        console.error("Google auth error:", err);
-        setError(
-          err?.response?.data?.detail ||
-            err.message ||
-            "Google authentication failed"
-        );
-      }
-    };
-
-    exchangeSession();
-  }, [navigate, refreshUser]);
+      toast.success(`Welcome, ${user.name}!`);
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      console.error("Google callback error:", err);
+      setError(err.response?.data?.detail || "Google authentication failed");
+    }
+  };
 
   if (error) {
     return (
@@ -72,7 +64,7 @@ export default function AuthCallback() {
             <h2 className="font-outfit font-bold text-2xl text-white mb-2">
               Authentication Failed
             </h2>
-            <p className="text-red-400 mb-6">{error}</p>
+            <p className="text-red-400 mb-6" data-testid="google-auth-error">{error}</p>
             <button
               onClick={() => navigate("/login")}
               className="text-electric hover:underline"

@@ -961,88 +961,102 @@ async def import_github_repo(repo_full_name: str, user: User = Depends(get_curre
         logger.error(f"GitHub import error: {e}")
         raise HTTPException(status_code=500, detail="Failed to import repository")
 
-# ==================== GOOGLE OAUTH (EMERGENT AUTH) ====================
+# ==================== GOOGLE OAUTH ====================
 
-EMERGENT_AUTH_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', '') or f"{FRONTEND_URL}/auth/google/callback"
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
-class GoogleSessionRequest(BaseModel):
-    session_id: str
+@api_router.get("/auth/google")
+async def google_login():
+    """Redirect user to Google OAuth consent screen."""
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in environment.")
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    google_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+    return RedirectResponse(url=google_url)
 
-@api_router.post("/auth/google/session")
-async def google_session_exchange(data: GoogleSessionRequest, background_tasks: BackgroundTasks):
-    """Exchange Emergent Auth session_id for user data and JWT tokens."""
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as http_client:
-            response = await http_client.get(
-                EMERGENT_AUTH_SESSION_URL,
-                headers={"X-Session-ID": data.session_id}
-            )
-            if response.status_code != 200:
-                logger.error(f"Emergent auth failed: {response.status_code} {response.text}")
-                raise HTTPException(status_code=401, detail="Google authentication failed")
-            session_data = response.json()
+class GoogleCodeRequest(BaseModel):
+    code: str
 
-        email = session_data.get("email")
-        name = session_data.get("name", "")
-        picture = session_data.get("picture", "")
-        session_token = session_data.get("session_token", "")
+@api_router.post("/auth/google/callback")
+async def google_callback(data: GoogleCodeRequest, background_tasks: BackgroundTasks):
+    """Exchange Google authorization code for user data and JWT tokens."""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
 
-        if not email:
-            raise HTTPException(status_code=400, detail="No email from Google")
+    # Exchange code for tokens
+    async with httpx.AsyncClient(timeout=15.0) as http_client:
+        token_resp = await http_client.post(GOOGLE_TOKEN_URL, data={
+            "code": data.code,
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": GOOGLE_REDIRECT_URI,
+            "grant_type": "authorization_code",
+        })
+        if token_resp.status_code != 200:
+            logger.error(f"Google token exchange failed: {token_resp.status_code} {token_resp.text}")
+            raise HTTPException(status_code=401, detail="Failed to exchange Google authorization code")
+        tokens = token_resp.json()
 
-        # Check if user exists
-        existing_user = await db.users.find_one({"email": email}, {"_id": 0})
+        # Get user info
+        userinfo_resp = await http_client.get(GOOGLE_USERINFO_URL, headers={
+            "Authorization": f"Bearer {tokens['access_token']}"
+        })
+        if userinfo_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Failed to get Google user info")
+        userinfo = userinfo_resp.json()
 
-        if existing_user:
-            # Update existing user
-            update_fields = {"email_verified": True}
-            if picture:
-                update_fields["avatar_url"] = picture
-            if name and not existing_user.get("name"):
-                update_fields["name"] = name
-            await db.users.update_one({"email": email}, {"$set": update_fields})
-            if isinstance(existing_user.get('created_at'), str):
-                existing_user['created_at'] = datetime.fromisoformat(existing_user['created_at'])
-            user = User(**existing_user)
-        else:
-            # Create new user
-            user = User(
-                email=email, name=name or email.split("@")[0],
-                password_hash="", email_verified=True,
-                avatar_url=picture or ""
-            )
-            doc = user.model_dump()
-            doc['created_at'] = doc['created_at'].isoformat()
-            await db.users.insert_one(doc)
-            background_tasks.add_task(send_welcome_email, user.email, user.name)
+    email = userinfo.get("email")
+    name = userinfo.get("name", "")
+    picture = userinfo.get("picture", "")
+    google_id = userinfo.get("id", "")
 
-        # Store Emergent session token
-        if session_token:
-            await db.user_sessions.update_one(
-                {"user_id": user.id},
-                {"$set": {
-                    "user_id": user.id,
-                    "session_token": session_token,
-                    "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
-                    "created_at": datetime.now(timezone.utc).isoformat()
-                }},
-                upsert=True
-            )
+    if not email:
+        raise HTTPException(status_code=400, detail="No email from Google")
 
-        # Generate JWT tokens (compatible with existing auth)
-        access_token = create_access_token({"sub": user.id})
-        refresh_token = create_refresh_token({"sub": user.id})
+    # Check if user exists
+    existing_user = await db.users.find_one({"email": email}, {"_id": 0})
 
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            user=user_to_response(user)
+    if existing_user:
+        update_fields = {"email_verified": True, "google_id": google_id}
+        if picture:
+            update_fields["avatar_url"] = picture
+        if name and not existing_user.get("name"):
+            update_fields["name"] = name
+        await db.users.update_one({"email": email}, {"$set": update_fields})
+        if isinstance(existing_user.get('created_at'), str):
+            existing_user['created_at'] = datetime.fromisoformat(existing_user['created_at'])
+        user = User(**existing_user)
+    else:
+        user = User(
+            email=email, name=name or email.split("@")[0],
+            password_hash="", email_verified=True,
+            google_id=google_id, avatar_url=picture or ""
         )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Google auth session exchange error: {e}")
-        raise HTTPException(status_code=500, detail="Google authentication failed")
+        doc = user.model_dump()
+        doc['created_at'] = doc['created_at'].isoformat()
+        await db.users.insert_one(doc)
+        background_tasks.add_task(send_welcome_email, user.email, user.name)
+
+    access_token = create_access_token({"sub": user.id})
+    refresh_token = create_refresh_token({"sub": user.id})
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=user_to_response(user)
+    )
 
 # ==================== PROJECT ROUTES ====================
 

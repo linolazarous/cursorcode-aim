@@ -27,12 +27,6 @@ import ContactPage from "./pages/ContactPage";
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, loading } = useAuth();
 
-  // CRITICAL: If we have a session_id hash, this is an OAuth callback.
-  // Don't redirect to login - show the AuthCallback (GoogleCallbackPage) instead.
-  if (window.location.hash?.includes('session_id=')) {
-    return <GoogleCallbackPage />;
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-void flex items-center justify-center">

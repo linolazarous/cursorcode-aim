@@ -28,31 +28,43 @@ class TestHealthCheck:
         print(f"✓ Health check passed: {data}")
 
 class TestGoogleOAuth:
-    """Google OAuth (Emergent Auth) endpoint tests"""
+    """Google OAuth (Standard OAuth2) endpoint tests"""
     
-    def test_google_session_endpoint_exists(self):
-        """POST /api/auth/google/session should exist and return proper error for invalid session"""
+    def test_google_login_endpoint_exists(self):
+        """GET /api/auth/google should return proper error when not configured or redirect"""
+        response = requests.get(f"{BASE_URL}/api/auth/google", allow_redirects=False)
+        assert response.status_code != 404, f"Google endpoint should not return 404"
+        
+        if response.status_code == 503:
+            data = response.json()
+            assert "detail" in data
+            assert "Google OAuth not configured" in data["detail"]
+            print(f"✓ Google endpoint returns proper configuration error: {data}")
+        elif response.status_code in [302, 307]:
+            print(f"✓ Google endpoint redirects to Google OAuth: {response.headers.get('location', '')}")
+        else:
+            print(f"Google endpoint returned status {response.status_code}: {response.text}")
+    
+    def test_google_callback_with_invalid_code(self):
+        """POST /api/auth/google/callback with invalid code should return error"""
         response = requests.post(
-            f"{BASE_URL}/api/auth/google/session",
-            json={"session_id": "invalid_test_session_123"}
+            f"{BASE_URL}/api/auth/google/callback",
+            json={"code": "invalid_test_code_123"}
         )
-        # Should return 401 (authentication failed) not 404 (not found)
-        assert response.status_code == 401, f"Expected 401, got {response.status_code}: {response.text}"
+        # Should return 401 or 503 (not configured) not 404
+        assert response.status_code in [401, 503], f"Expected 401 or 503, got {response.status_code}: {response.text}"
         data = response.json()
         assert "detail" in data
-        # Should say "Google authentication failed" not "Not Found"
-        assert "Google authentication failed" in data["detail"] or "auth" in data["detail"].lower()
-        print(f"✓ Google session endpoint returns appropriate error: {data}")
+        print(f"✓ Google callback endpoint returns appropriate error: {data}")
     
-    def test_google_session_missing_session_id(self):
-        """POST /api/auth/google/session without session_id should return 422 validation error"""
+    def test_google_callback_missing_code(self):
+        """POST /api/auth/google/callback without code should return 422 validation error"""
         response = requests.post(
-            f"{BASE_URL}/api/auth/google/session",
+            f"{BASE_URL}/api/auth/google/callback",
             json={}
         )
-        # Missing field should return 422 (validation error)
         assert response.status_code == 422, f"Expected 422, got {response.status_code}"
-        print(f"✓ Google session endpoint validates required fields")
+        print(f"✓ Google callback endpoint validates required fields")
 
 class TestGitHubOAuth:
     """GitHub OAuth endpoint tests"""

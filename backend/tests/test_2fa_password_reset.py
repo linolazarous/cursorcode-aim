@@ -11,7 +11,7 @@ import os
 import pyotp
 import time
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://cursor-ai-builder-1.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://grok-devops.preview.emergentagent.com').rstrip('/')
 
 
 @pytest.fixture(scope="module")
