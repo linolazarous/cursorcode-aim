@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import Logo from "../components/Logo";
 import DemoVideoModal from "../components/DemoVideoModal";
+import NeuralBackground from "../components/NeuralBackground";
 
 const PRICING_PLANS = [
   {
@@ -286,9 +287,13 @@ export default function LandingPage() {
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 lg:pt-40 lg:pb-32 overflow-hidden">
+        {/* Neural network particle background */}
+        <NeuralBackground />
         {/* Background effects */}
         <div className="absolute inset-0 bg-hero-glow" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-electric/5 blur-[100px]" />
+        {/* Cyber grid overlay */}
+        <div className="absolute inset-0 grid-pattern opacity-40" />
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
@@ -442,6 +447,34 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Social Proof Stats Strip */}
+      <section className="relative border-t border-b border-white/5 bg-void-paper/30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {[
+              { value: "50K+", label: "Apps Built" },
+              { value: "99.9%", label: "Uptime SLA" },
+              { value: "7", label: "AI Agents" },
+              { value: "<60s", label: "Avg. Deploy Time" },
+            ].map((stat, i) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="text-center"
+              >
+                <div className="font-outfit font-bold text-3xl md:text-4xl text-white mb-1">
+                  {stat.value}
+                </div>
+                <div className="text-sm text-zinc-500">{stat.label}</div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Features Section */}
       <section id="features" className="py-20 lg:py-32 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -469,7 +502,7 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
-                className={`group relative p-8 rounded-xl bg-void-paper/50 border border-white/5 hover:border-electric/30 transition-colors overflow-hidden ${
+                className={`group relative p-8 rounded-xl bg-void-paper/50 border border-white/5 hover:border-electric/30 transition-all cyber-border-hover overflow-hidden ${
                   index === 0 ? "lg:col-span-2 lg:row-span-2" : ""
                 }`}
                 data-testid={`feature-card-${index}`}
@@ -640,7 +673,7 @@ export default function LandingPage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
-                className="p-8 rounded-xl border border-white/5 bg-void-paper/50 text-center hover:border-electric/20 transition-colors"
+                className="p-8 rounded-xl border border-white/5 bg-void-paper/50 text-center hover:border-electric/20 transition-all cyber-border-hover"
                 data-testid={`compliance-card-${index}`}
               >
                 <div className="w-14 h-14 rounded-xl bg-electric/10 flex items-center justify-center mx-auto mb-5">
@@ -732,7 +765,8 @@ export default function LandingPage() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 lg:py-32 relative border-t border-white/5">
+      <section className="py-20 lg:py-32 relative border-t border-white/5 overflow-hidden">
+        <NeuralBackground />
         <div className="absolute inset-0 bg-hero-glow" />
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
           <motion.div
@@ -829,7 +863,7 @@ function ArchitectureGraph() {
             key={agent.name}
             animate={{
               scale: index === active ? 1.05 : 1,
-              borderColor: index === active ? "rgba(59, 130, 246, 0.5)" : "rgba(255, 255, 255, 0.05)",
+              borderColor: index === active ? "rgba(0, 180, 255, 0.5)" : "rgba(255, 255, 255, 0.05)",
             }}
             transition={{ duration: 0.3 }}
             className={`relative p-5 rounded-xl border bg-void-paper/50 transition-all cursor-default ${
