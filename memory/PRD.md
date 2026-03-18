@@ -7,11 +7,11 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
 - **Frontend:** React, Tailwind CSS, Shadcn/UI, Framer Motion, React Router, Monaco Editor
 - **Backend:** FastAPI, MongoDB (Motor), JWT Auth, httpx (xAI API), SSE Streaming, Stripe
 - **AI:** xAI Grok (3 model tiers) with 6-agent multi-agent pipeline
-- **3rd Party:** Stripe, SendGrid, GitHub OAuth, Emergent Google Auth
+- **3rd Party:** Stripe, SendGrid, GitHub OAuth, Google OAuth2 (standard)
 
-## Completed Features (25 features, 100% tested across 11 iterations)
+## Completed Features (25+ features, 100% tested across 12 iterations)
 1. User auth (signup, login, JWT, refresh tokens)
-2. GitHub OAuth + Emergent Google Auth
+2. GitHub OAuth + Google OAuth2 (standard flow)
 3. User/Admin dashboards with project CRUD
 4. Project Templates Gallery (filterable)
 5. Template Preview Mode (interactive mockups)
@@ -32,13 +32,19 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
 20. Project Export (ZIP download)
 21. Activity Timeline (audit log)
 22. Version Snapshots (save/restore with auto-backup)
-23. **Full Stripe Webhook** (checkout, invoice, subscription events + idempotency)
-24. **Privacy, Terms, Contact pages** (real content, real routing)
-25. **Production-grade Demo Mode** (realistic multi-file AI output for all 6 agents)
+23. Full Stripe Webhook (checkout, invoice, subscription events + idempotency)
+24. Privacy, Terms, Contact pages (real content, real routing)
+25. Production-grade Demo Mode (realistic multi-file AI output for all 6 agents)
 
 ## DB Collections
 users, projects, project_messages, project_activities, project_snapshots, deployments, subscriptions, credit_usage, webhook_events, payments
 
+## Production Environment
+- **Backend:** Render (env vars: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, STRIPE_SECRET_KEY, etc.)
+- **Frontend:** Vercel (auto-deploys from GitHub)
+- **Database:** MongoDB Atlas (production)
+
 ## Pending
+- P1: Backend refactoring (server.py is 2500+ lines monolith)
 - P2: Real deployment hosting, email verification enforcement, community templates
 - Mocked: Deployment simulation, Contact form email, AI demo mode (until XAI_API_KEY set)
