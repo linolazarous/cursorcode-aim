@@ -30,6 +30,7 @@ import DemoVideoModal from "../components/DemoVideoModal";
 import NeuralBackground from "../components/NeuralBackground";
 import AnimatedCounter from "../components/AnimatedCounter";
 import RotatingText from "../components/RotatingText";
+import LiveDemo from "../components/LiveDemo";
 
 const PRICING_PLANS = [
   {
@@ -193,6 +194,12 @@ export default function LandingPage() {
                 className="text-sm text-zinc-400 hover:text-white transition-colors"
               >
                 Architecture
+              </a>
+              <a
+                href="#demo"
+                className="text-sm text-electric hover:text-white transition-colors font-medium"
+              >
+                Live Demo
               </a>
               <a
                 href="#security"
@@ -599,6 +606,9 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* Interactive Live Demo */}
+      <LiveDemo />
 
       {/* Multi-Agent Architecture Visualization */}
       <section id="architecture" className="py-20 lg:py-32 relative border-t border-white/5">
