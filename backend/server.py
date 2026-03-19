@@ -1124,9 +1124,15 @@ async def generate_code(request: AIGenerateRequest, user: User = Depends(get_cur
     project_doc = await db.projects.find_one({"id": request.project_id, "user_id": user.id}, {"_id": 0})
     if not project_doc:
         raise HTTPException(status_code=404, detail="Project not found")
-    system_message = """You are CursorCode AI, an elite autonomous AI software engineering system.
+    system_message = r"""You are CursorCode AI, an elite autonomous AI software engineering system.
 Generate clean, production-ready, well-documented code.
 Output each file using this format:
 
 ```filename:ComponentName.jsx
 // file content here
+```"""
+    try:
+        response = await call_xai_api(request.prompt, model, system_message)
+    except Exception as e:
+        logger.error(f"AI generation failed: {e}")
+        raise HTTPException(status_code=500, detail="AI generation failed")
