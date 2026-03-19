@@ -2523,4 +2523,4 @@ def root():
         "message": "🚀 CursorCode AI API is live",
         "docs": "/docs",
         "health": "/api/health"
-        }
+}
