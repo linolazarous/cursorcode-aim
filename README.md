@@ -71,6 +71,11 @@ EMAIL_FROM=info@cursorcode.ai
 GITHUB_OAUTH_CLIENT_ID=your-client-id
 GITHUB_OAUTH_CLIENT_SECRET=your-client-secret
 
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google_client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret-id
+GOOGLE_REDIRECT_URI=your-redirect-url
+
 # Frontend URL
 FRONTEND_URL=http://localhost:3000
 ```
