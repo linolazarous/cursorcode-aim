@@ -417,7 +417,7 @@ export default function App() {{
               <span>{{item.text}}</span>
               <button onClick={{() => setItems(items.filter(i => i.id !== item.id))}} className="text-red-400 hover:text-red-300 text-sm">Remove</button>
             </div>
-          ))}
+          ))}}
         </div>
       </div>
     </div>
