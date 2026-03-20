@@ -25,6 +25,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from urllib.parse import urlencode
 
+# Fix: Use __file__ instead of file
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -60,6 +61,14 @@ GITHUB_CLIENT_ID = os.environ.get('GITHUB_OAUTH_CLIENT_ID', '')
 GITHUB_CLIENT_SECRET = os.environ.get('GITHUB_OAUTH_CLIENT_SECRET', '')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://www.cursorcode.app')
 
+# Google OAuth Configuration
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', '') or f"{FRONTEND_URL}/auth/google/callback"
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
 # Create the main app
 app = FastAPI(title="CursorCode AI API", version="2.0.0")
 
@@ -87,6 +96,29 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# ==================== ROOT ENDPOINT ====================
+
+@app.get("/")
+async def root():
+    """Root endpoint for health check"""
+    return {
+        "message": "CursorCode AI API is running",
+        "version": "2.0.0",
+        "status": "healthy",
+        "docs": "/docs"
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "mongodb": "connected" if mongo_url else "not configured",
+        "stripe": "configured" if stripe.api_key else "not configured",
+        "sendgrid": "configured" if SENDGRID_API_KEY else "not configured"
+    }
 
 # ==================== MODELS ====================
 
@@ -469,14 +501,14 @@ export default function App() {{
               <span>{{item.text}}</span>
               <button onClick={{() => setItems(items.filter(i => i.id !== item.id))}} className="text-red-400 hover:text-red-300 text-sm">Remove</button>
             </div>
-          ))}}
+          ))}
         </div>
       </div>
     </div>
   );
 }}
 ```"""
-
+    
     headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
     messages = []
     if system_message:
@@ -947,13 +979,6 @@ async def import_github_repo(repo_full_name: str, user: User = Depends(get_curre
 
 # ==================== GOOGLE OAUTH ====================
 
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
-GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', '') or f"{FRONTEND_URL}/auth/google/callback"
-GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
-
 @api_router.get("/auth/google")
 async def google_login():
     """Redirect user to Google OAuth consent screen."""
@@ -1124,15 +1149,225 @@ async def generate_code(request: AIGenerateRequest, user: User = Depends(get_cur
     project_doc = await db.projects.find_one({"id": request.project_id, "user_id": user.id}, {"_id": 0})
     if not project_doc:
         raise HTTPException(status_code=404, detail="Project not found")
-    system_message = r"""You are CursorCode AI, an elite autonomous AI software engineering system.
-Generate clean, production-ready, well-documented code.
-Output each file using this format:
+    system_message = r"""You are CursorCode AI, an elite autonomous AI software engineering system.  
+Generate clean, production-ready, well-documented code.  
+Output each file using this format:  
 
-```filename:ComponentName.jsx
-// file content here
+```filename:ComponentName.jsx  
+// file content here  
 ```"""
     try:
         response = await call_xai_api(request.prompt, model, system_message)
     except Exception as e:
         logger.error(f"AI generation failed: {e}")
         raise HTTPException(status_code=500, detail="AI generation failed")
+    
+    # Parse generated files
+    files = {}
+    import re
+    pattern = r'```filename:([^\n]+)\n(.*?)```'
+    matches = re.findall(pattern, response, re.DOTALL)
+    for filename, content in matches:
+        files[filename.strip()] = content.strip()
+    
+    # If no files found, try alternative pattern
+    if not files:
+        alt_pattern = r'filename:\s*([^\n]+)\n```(?:[a-z]*)\n(.*?)```'
+        matches = re.findall(alt_pattern, response, re.DOTALL)
+        for filename, content in matches:
+            files[filename.strip()] = content.strip()
+    
+    # Update project with generated files
+    existing_files = project_doc.get('files', {})
+    existing_files.update(files)
+    await db.projects.update_one(
+        {"id": request.project_id},
+        {"$set": {"files": existing_files, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    # Record credit usage
+    credit_usage = CreditUsage(
+        user_id=user.id, project_id=request.project_id,
+        model=model, credits_used=credits_needed, task_type=request.task_type
+    )
+    usage_doc = credit_usage.model_dump()
+    usage_doc['created_at'] = usage_doc['created_at'].isoformat()
+    await db.credit_usage.insert_one(usage_doc)
+    
+    # Update user's credits_used
+    await db.users.update_one(
+        {"id": user.id},
+        {"$inc": {"credits_used": credits_needed}}
+    )
+    
+    return AIGenerateResponse(
+        id=str(uuid.uuid4()),
+        project_id=request.project_id,
+        prompt=request.prompt,
+        response=response,
+        model_used=model,
+        credits_used=credits_needed,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        files=files
+    )
+
+# ==================== STRIPE ROUTES ====================
+
+@api_router.get("/stripe/plans")
+async def get_plans():
+    """Get available subscription plans"""
+    return {
+        key: {
+            "name": plan.name,
+            "price": plan.price,
+            "credits": plan.credits,
+            "features": plan.features,
+            "stripe_price_id": plan.stripe_price_id
+        }
+        for key, plan in SUBSCRIPTION_PLANS.items()
+    }
+
+@api_router.post("/stripe/create-checkout-session")
+async def create_checkout_session(plan_id: str, user: User = Depends(get_current_user)):
+    """Create Stripe checkout session for subscription"""
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+    
+    plan = SUBSCRIPTION_PLANS.get(plan_id)
+    if not plan or plan.price == 0:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    
+    if not plan.stripe_price_id:
+        raise HTTPException(status_code=400, detail="Plan not configured for payment")
+    
+    # Get or create Stripe customer
+    if not user.stripe_customer_id:
+        customer = stripe.Customer.create(
+            email=user.email,
+            name=user.name,
+            metadata={"user_id": user.id}
+        )
+        user.stripe_customer_id = customer.id
+        await db.users.update_one(
+            {"id": user.id},
+            {"$set": {"stripe_customer_id": customer.id}}
+        )
+    
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            customer=user.stripe_customer_id,
+            payment_method_types=["card"],
+            line_items=[{
+                "price": plan.stripe_price_id,
+                "quantity": 1,
+            }],
+            mode="subscription",
+            success_url=f"{FRONTEND_URL}/dashboard?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{FRONTEND_URL}/pricing",
+            metadata={"user_id": user.id, "plan": plan_id}
+        )
+        return {"session_id": checkout_session.id, "url": checkout_session.url}
+    except Exception as e:
+        logger.error(f"Stripe checkout error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create checkout session")
+
+@api_router.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events"""
+    if not stripe.api_key or not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+    
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    
+    # Handle the event
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        user_id = session["metadata"].get("user_id")
+        plan_key = session["metadata"].get("plan")
+        
+        if user_id and plan_key:
+            plan = SUBSCRIPTION_PLANS.get(plan_key)
+            if plan:
+                await db.users.update_one(
+                    {"id": user_id},
+                    {
+                        "$set": {
+                            "plan": plan_key,
+                            "stripe_subscription_id": session.get("subscription"),
+                            "credits": plan.credits,
+                            "credits_used": 0
+                        }
+                    }
+                )
+    
+    elif event["type"] == "invoice.payment_succeeded":
+        invoice = event["data"]["object"]
+        subscription_id = invoice.get("subscription")
+        if subscription_id:
+            # Get subscription details to update user plan
+            try:
+                subscription = stripe.Subscription.retrieve(subscription_id)
+                price_id = subscription["items"]["data"][0]["price"]["id"]
+                
+                # Find which plan matches this price
+                for plan_key, plan in SUBSCRIPTION_PLANS.items():
+                    if plan.stripe_price_id == price_id:
+                        user = await db.users.find_one({"stripe_subscription_id": subscription_id})
+                        if user:
+                            await db.users.update_one(
+                                {"id": user["id"]},
+                                {"$set": {"plan": plan_key, "credits": plan.credits}}
+                            )
+                        break
+            except Exception as e:
+                logger.error(f"Error processing invoice: {e}")
+    
+    return {"received": True}
+
+# ==================== DASHBOARD STATS ROUTE ====================
+
+@api_router.get("/dashboard/stats")
+async def get_dashboard_stats(user: User = Depends(get_current_user)):
+    """Get user dashboard statistics"""
+    projects_count = await db.projects.count_documents({"user_id": user.id})
+    usage_count = await db.credit_usage.count_documents({"user_id": user.id})
+    deployments_count = await db.deployments.count_documents({"user_id": user.id}) if hasattr(db, 'deployments') else 0
+    
+    return {
+        "projects": projects_count,
+        "ai_calls": usage_count,
+        "credits_remaining": user.credits - user.credits_used,
+        "deployments": deployments_count,
+        "plan": user.plan
+    }
+
+# ==================== MOUNT THE ROUTER ====================
+
+# This is the CRITICAL line that was missing!
+app.include_router(api_router)
+
+# ==================== LIFECYCLE EVENTS ====================
+
+@app.on_event("startup")
+async def startup_event():
+    """Run on application startup"""
+    logger.info("Starting up CursorCode AI API...")
+    await ensure_stripe_products()
+    logger.info("CursorCode AI API started successfully")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Run on application shutdown"""
+    logger.info("Shutting down CursorCode AI API...")
+    client.close()
+    logger.info("CursorCode AI API shutdown complete")
