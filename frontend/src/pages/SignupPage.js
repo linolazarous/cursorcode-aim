@@ -43,22 +43,25 @@ export default function SignupPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
 
   // ======================================================
-  // EMAIL SIGNUP
+  // EMAIL SIGNUP – matches backend /api/auth/signup
   // ======================================================
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (loading) return;
 
     setLoading(true);
 
     try {
+      // authSignup (in your AuthContext) now receives the full TokenResponse
+      // including access_token, refresh_token AND the complete user object
       await authSignup(name, email, password);
 
       toast.success(
-        "Account created successfully. Please check your email to verify your account."
+        "Account created successfully! Please check your email to verify your account."
       );
 
+      // Backend returns tokens immediately (even before verification)
+      // → we can safely go to dashboard (most apps show a "verify your email" banner there)
       navigate("/dashboard");
 
     } catch (error) {
@@ -70,25 +73,22 @@ export default function SignupPage() {
         "Signup failed. Please try again.";
 
       toast.error(message);
-
     } finally {
       setLoading(false);
     }
   };
 
   // ======================================================
-  // GITHUB OAUTH
+  // GITHUB OAUTH – matches backend GET /api/auth/github
   // ======================================================
   const handleGithubSignup = () => {
     if (githubLoading) return;
-
     setGithubLoading(true);
-
     window.location.href = `${BACKEND_URL}/api/auth/github`;
   };
 
   // ======================================================
-  // GOOGLE OAUTH
+  // GOOGLE OAUTH – matches backend GET /api/auth/google
   // ======================================================
   const handleGoogleSignup = () => {
     if (googleLoading) return;
@@ -214,7 +214,7 @@ export default function SignupPage() {
             <div className="flex-1 h-px bg-white/10" />
           </div>
 
-          {/* EMAIL SIGNUP */}
+          {/* EMAIL SIGNUP FORM */}
           <form onSubmit={handleSubmit} className="space-y-4">
 
             <div>
@@ -238,16 +238,13 @@ export default function SignupPage() {
 
             <div>
               <Label>Password</Label>
-
               <div className="relative">
-
                 <Input
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -259,7 +256,6 @@ export default function SignupPage() {
                     <Eye size={18} />
                   )}
                 </button>
-
               </div>
             </div>
 
