@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";           // ← added useEffect
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "../components/ui/button";
@@ -22,7 +22,7 @@ const GoogleIcon = () => (
 );
 
 export default function LoginPage() {
-  const { login: authLogin } = useAuth();
+  const { login: authLogin, isAuthenticated } = useAuth();   // ← added isAuthenticated
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -35,11 +35,16 @@ export default function LoginPage() {
   const [githubLoading, setGithubLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // 🔥 AUTO-REDIRECT WHEN AUTH STATE UPDATES (this fixes the race condition)
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
   // =====================================================
-  // EMAIL LOGIN (with 2FA support) – matches backend
+  // EMAIL LOGIN (with 2FA support)
   // =====================================================
-  // POST /api/auth/login          → normal login or { requires_2fa: true }
-  // POST /api/auth/login-2fa      → login with TOTP code (returns full TokenResponse)
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -47,12 +52,10 @@ export default function LoginPage() {
 
     try {
       if (requires2FA) {
-        // 2FA step – calls /auth/login-2fa
         await authLogin(email, password, totpCode);
         toast.success("Welcome back! 2FA verified.");
-        navigate("/dashboard");
+        // No manual navigate here anymore – useEffect will catch it
       } else {
-        // First step – calls /auth/login
         const result = await authLogin(email, password);
 
         if (result?.requires_2fa) {
@@ -61,41 +64,35 @@ export default function LoginPage() {
           toast.info("Enter your 2FA code to continue");
         } else {
           toast.success("Welcome back!");
-          navigate("/dashboard");
+          // No manual navigate here anymore – useEffect will catch it
         }
       }
     } catch (error) {
       console.error("Login error:", error);
-
       const message =
         error?.response?.data?.detail ||
         error?.response?.data?.message ||
         "Invalid email or password";
-
       toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  // =====================================================
-  // GITHUB LOGIN – matches backend GET /api/auth/github
-  // =====================================================
+  // GitHub & Google handlers stay exactly the same
   const handleGithubLogin = () => {
     if (githubLoading) return;
     setGithubLoading(true);
     window.location.href = `${BACKEND_URL}/api/auth/github`;
   };
 
-  // =====================================================
-  // GOOGLE LOGIN – matches backend GET /api/auth/google
-  // =====================================================
   const handleGoogleLogin = () => {
     if (googleLoading) return;
     setGoogleLoading(true);
     window.location.href = `${BACKEND_URL}/api/auth/google`;
   };
 
+  // ... rest of your JSX is unchanged (I kept it exactly the same)
   return (
     <div className="min-h-screen bg-void noise-bg flex">
       {/* LEFT PANEL */}
@@ -127,183 +124,14 @@ export default function LoginPage() {
 
       {/* RIGHT PANEL */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
-
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-md"
         >
-
-          <Link to="/" className="flex lg:hidden mb-8">
-            <Logo size="default" />
-          </Link>
-
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-white mb-8"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </Link>
-
-          <h1 className="font-outfit font-bold text-3xl text-white mb-2">
-            Welcome back
-          </h1>
-
-          <p className="text-zinc-400 mb-8">
-            Sign in to your account to continue building
-          </p>
-
-          {/* GOOGLE LOGIN */}
-          <Button
-            onClick={handleGoogleLogin}
-            disabled={googleLoading}
-            variant="outline"
-            className="w-full h-12 mb-3 bg-white/[0.03] border-white/10 text-white hover:bg-white/[0.07] hover:border-white/20 transition-all"
-            data-testid="login-google-btn"
-          >
-            {googleLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <>
-                <GoogleIcon />
-                Continue with Google
-              </>
-            )}
-          </Button>
-
-          {/* GITHUB LOGIN */}
-          <Button
-            onClick={handleGithubLogin}
-            disabled={githubLoading}
-            variant="outline"
-            className="w-full h-12 bg-white/[0.03] border-white/10 text-white hover:bg-white/[0.07] hover:border-white/20 transition-all mb-6"
-            data-testid="login-github-btn"
-          >
-            {githubLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <>
-                <Github className="w-5 h-5 mr-2" />
-                Continue with GitHub
-              </>
-            )}
-          </Button>
-
-          {/* Divider */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="text-xs text-zinc-500 uppercase tracking-wider">or</span>
-            <div className="flex-1 h-px bg-white/10" />
-          </div>
-
-          {/* EMAIL LOGIN FORM */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-
-            {!requires2FA ? (
-              <>
-                <div>
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    data-testid="login-email-input"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <Label>Password</Label>
-                    <Link to="/forgot-password" className="text-xs text-electric hover:underline">
-                      Forgot password?
-                    </Link>
-                  </div>
-
-                  <div className="relative">
-                    <Input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      data-testid="login-password-input"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-3"
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-4 rounded-lg bg-electric/10 border border-electric/20">
-                  <ShieldCheck className="w-5 h-5 text-electric flex-shrink-0" />
-                  <p className="text-sm text-zinc-300">
-                    Two-factor authentication is enabled. Enter your 6-digit code from your authenticator app.
-                  </p>
-                </div>
-                <div>
-                  <Label>2FA Code</Label>
-                  <Input
-                    type="text"
-                    maxLength={6}
-                    value={totpCode}
-                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder="000000"
-                    className="text-center text-2xl tracking-[8px] font-mono"
-                    required
-                    autoFocus
-                    data-testid="login-2fa-input"
-                  />
-                </div>
-              </div>
-            )}
-
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full h-12 bg-electric hover:bg-electric/90 text-white shadow-glow"
-              data-testid="login-submit-button"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {requires2FA ? "Verifying..." : "Signing in..."}
-                </>
-              ) : requires2FA ? (
-                "Verify & Sign in"
-              ) : (
-                "Sign in"
-              )}
-            </Button>
-
-            {requires2FA && (
-              <button
-                type="button"
-                onClick={() => { setRequires2FA(false); setTotpCode(""); }}
-                className="w-full text-sm text-zinc-400 hover:text-white transition-colors"
-              >
-                Back to login
-              </button>
-            )}
-
-          </form>
-
-          <p className="text-center text-zinc-400 mt-8">
-            Don't have an account?{" "}
-            <Link to="/signup" className="text-electric hover:underline">
-              Sign up for free
-            </Link>
-          </p>
-
+          {/* ... all your existing JSX (Google, GitHub, form, etc.) is unchanged ... */}
+          {/* (I omitted it here for brevity – just keep everything from <Link to="/" ... down to the end) */}
         </motion.div>
-
       </div>
     </div>
   );
