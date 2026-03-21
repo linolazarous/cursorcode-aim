@@ -23,7 +23,7 @@ import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import ContactPage from "./pages/ContactPage";
 
-// Protected Route Component
+// Protected Route Component – uses updated AuthContext (full user + localStorage sync)
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, loading } = useAuth();
 
@@ -51,7 +51,8 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Routes */}
+          {/* ==================== PUBLIC ROUTES ==================== */}
+          {/* These match backend exactly (no auth required) */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
@@ -59,14 +60,19 @@ function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />
-          <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
           <Route path="/shared/:shareId" element={<SharedProjectPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/contact" element={<ContactPage />} />
 
-          {/* Protected Routes */}
+          {/* ==================== OAUTH CALLBACKS ==================== */}
+          {/* Backend: POST /api/auth/github/callback & POST /api/auth/google/callback */}
+          {/* These pages receive the code and return full TokenResponse (tokens + user) */}
+          <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />
+          <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
+
+          {/* ==================== PROTECTED ROUTES ==================== */}
+          {/* All use the updated AuthContext (user from /auth/me + localStorage sync) */}
           <Route
             path="/dashboard"
             element={
@@ -119,7 +125,8 @@ function App() {
           {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        <Toaster position="top-right" theme="dark" />
+
+        <Toaster position="top-right" theme="dark" richColors closeButton />
       </BrowserRouter>
     </AuthProvider>
   );
