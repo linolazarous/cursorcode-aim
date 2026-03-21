@@ -14,16 +14,23 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
+  // =====================================================
+  // FORGOT PASSWORD REQUEST – matches backend exactly
+  // POST /api/auth/reset-password/request
+  // Returns generic success message (security by obscurity)
+  // =====================================================
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
+
     try {
       await api.post("/auth/reset-password/request", { email });
       setSent(true);
-      toast.success("Reset link sent! Check your inbox.");
+      toast.success("If an account exists with that email, a reset link has been sent.");
     } catch (error) {
-      toast.error("Failed to send reset link. Try again.");
+      // Network / server error only (backend never returns error for this endpoint)
+      toast.error("Failed to send reset link. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
