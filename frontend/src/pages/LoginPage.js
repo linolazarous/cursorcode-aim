@@ -36,21 +36,28 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
 
   // =====================================================
-  // EMAIL LOGIN (with 2FA support)
+  // EMAIL LOGIN (with 2FA support) – matches backend
   // =====================================================
+  // POST /api/auth/login          → normal login or { requires_2fa: true }
+  // POST /api/auth/login-2fa      → login with TOTP code (returns full TokenResponse)
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
+
     try {
       if (requires2FA) {
+        // 2FA step – calls /auth/login-2fa
         await authLogin(email, password, totpCode);
-        toast.success("Welcome back!");
+        toast.success("Welcome back! 2FA verified.");
         navigate("/dashboard");
       } else {
+        // First step – calls /auth/login
         const result = await authLogin(email, password);
+
         if (result?.requires_2fa) {
           setRequires2FA(true);
+          setTotpCode("");
           toast.info("Enter your 2FA code to continue");
         } else {
           toast.success("Welcome back!");
@@ -59,10 +66,12 @@ export default function LoginPage() {
       }
     } catch (error) {
       console.error("Login error:", error);
+
       const message =
         error?.response?.data?.detail ||
         error?.response?.data?.message ||
         "Invalid email or password";
+
       toast.error(message);
     } finally {
       setLoading(false);
@@ -70,18 +79,16 @@ export default function LoginPage() {
   };
 
   // =====================================================
-  // GITHUB LOGIN
+  // GITHUB LOGIN – matches backend GET /api/auth/github
   // =====================================================
   const handleGithubLogin = () => {
     if (githubLoading) return;
-
     setGithubLoading(true);
-
     window.location.href = `${BACKEND_URL}/api/auth/github`;
   };
 
   // =====================================================
-  // GOOGLE LOGIN
+  // GOOGLE LOGIN – matches backend GET /api/auth/google
   // =====================================================
   const handleGoogleLogin = () => {
     if (googleLoading) return;
@@ -231,7 +238,6 @@ export default function LoginPage() {
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
-
                 </div>
               </>
             ) : (
