@@ -9,7 +9,7 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor – adds Bearer token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("access_token");
@@ -21,13 +21,13 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor to handle token refresh
+// Response interceptor – auto-refresh on 401 + sync full user data
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // If 401 and not already retried
+    // Only retry once on 401
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
@@ -44,16 +44,24 @@ api.interceptors.response.use(
             }
           );
 
-          const { access_token, refresh_token } = response.data;
+          // Backend now returns full TokenResponse (access_token + refresh_token + user)
+          const { access_token, refresh_token, user } = response.data;
+
           localStorage.setItem("access_token", access_token);
           localStorage.setItem("refresh_token", refresh_token);
+
+          // ← NEW: sync the full user object so your app stays up-to-date after refresh
+          if (user) {
+            localStorage.setItem("user", JSON.stringify(user));
+          }
 
           originalRequest.headers.Authorization = `Bearer ${access_token}`;
           return api(originalRequest);
         } catch (refreshError) {
-          // Refresh failed, logout user
+          // Refresh failed → full logout
           localStorage.removeItem("access_token");
           localStorage.removeItem("refresh_token");
+          localStorage.removeItem("user");
           window.location.href = "/login";
         }
       }
