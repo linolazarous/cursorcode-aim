@@ -41,6 +41,11 @@ export default function ResetPasswordPage() {
     return map[Math.min(score - 1, 4)] || map[0];
   }, [password]);
 
+  // =====================================================
+  // PASSWORD RESET CONFIRM – matches backend exactly
+  // =====================================================
+  // POST /api/auth/reset-password/confirm
+  // Returns full TokenResponse { access_token, refresh_token, user }
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (password !== confirmPassword) {
@@ -51,18 +56,33 @@ export default function ResetPasswordPage() {
       toast.error("Password must be at least 8 characters");
       return;
     }
+
     setLoading(true);
     try {
-      const res = await api.post("/auth/reset-password/confirm", { token, new_password: password });
-      const { access_token, refresh_token } = res.data;
+      const res = await api.post("/auth/reset-password/confirm", {
+        token,
+        new_password: password,
+      });
+
+      // Backend now returns full TokenResponse (including user)
+      const { access_token, refresh_token, user } = res.data;
+
       localStorage.setItem("access_token", access_token);
       localStorage.setItem("refresh_token", refresh_token);
+      if (user) {
+        localStorage.setItem("user", JSON.stringify(user));
+      }
+
+      // Refresh context (in case your AuthContext needs it)
       await refreshUser();
+
       setSuccess(true);
-      toast.success("Password reset successfully!");
-      setTimeout(() => navigate("/dashboard"), 2000);
+      toast.success("Password reset successfully! You're now signed in.");
+      setTimeout(() => navigate("/dashboard"), 1500);
     } catch (error) {
-      const msg = error?.response?.data?.detail || "Failed to reset password";
+      const msg =
+        error?.response?.data?.detail ||
+        "Failed to reset password. Link may be expired.";
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -72,11 +92,17 @@ export default function ResetPasswordPage() {
   if (success) {
     return (
       <div className="min-h-screen bg-void noise-bg flex items-center justify-center p-8">
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="text-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
           <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-10 h-10 text-emerald-400" />
           </div>
-          <h1 className="font-outfit font-bold text-3xl text-white mb-3">Password Reset!</h1>
+          <h1 className="font-outfit font-bold text-3xl text-white mb-3">
+            Password Reset!
+          </h1>
           <p className="text-zinc-400 mb-6">Redirecting you to your dashboard...</p>
           <Loader2 className="w-6 h-6 animate-spin text-electric mx-auto" />
         </motion.div>
