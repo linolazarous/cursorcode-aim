@@ -10,7 +10,7 @@ import Logo from "../components/Logo";
 export default function GitHubCallbackPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { refreshUser } = useAuth(); // only need refresh after OAuth success
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -25,24 +25,32 @@ export default function GitHubCallbackPage() {
     if (code) {
       handleGitHubCallback(code);
     } else {
-      setError("No authorization code received");
+      setError("No authorization code received from GitHub");
     }
   }, [searchParams]);
 
+  // =====================================================
+  // GITHUB OAUTH CALLBACK – matches backend exactly
+  // POST /api/auth/github/callback?code=...
+  // Returns full TokenResponse { access_token, refresh_token, user }
+  // =====================================================
   const handleGitHubCallback = async (code) => {
     try {
       const response = await api.post(`/auth/github/callback?code=${code}`);
-      const { access_token, refresh_token, user } = response.data;
+      const { access_token, refresh_token, user: userData } = response.data;
 
+      // Full sync with updated AuthContext + api.js
       localStorage.setItem("access_token", access_token);
       localStorage.setItem("refresh_token", refresh_token);
+      localStorage.setItem("user", JSON.stringify(userData));
 
-      toast.success(`Welcome, ${user.name}!`);
+      await refreshUser(); // ensures context is up-to-date
+
+      toast.success(`Welcome, ${userData.name || userData.email}!`);
       navigate("/dashboard");
-      window.location.reload(); // Refresh to update auth state
-    } catch (error) {
-      console.error("GitHub callback error:", error);
-      setError(error.response?.data?.detail || "GitHub authentication failed");
+    } catch (err) {
+      console.error("GitHub callback error:", err);
+      setError(err.response?.data?.detail || "GitHub authentication failed");
     }
   };
 
