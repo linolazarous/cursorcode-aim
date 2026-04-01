@@ -1,13 +1,13 @@
-from datetime import datetime, timezone, timedelta
-import secrets
 import bcrypt
-from jose import jwt, JWTError
+import secrets
+from datetime import datetime, timezone, timedelta
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
 
-from core.config import JWT_SECRET, JWT_REFRESH_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS, JWT_REFRESH_EXPIRATION_DAYS
+from core.config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS, JWT_REFRESH_SECRET, JWT_REFRESH_EXPIRATION_DAYS
 from core.database import db
-from models.schemas import User, UserResponse
+from models.schemas import User, UserResponse, Project, ProjectResponse
 
 security = HTTPBearer()
 
@@ -87,4 +87,17 @@ def user_to_response(user: User) -> UserResponse:
         avatar_url=user.avatar_url, onboarding_completed=user.onboarding_completed,
         totp_enabled=user.totp_enabled,
         created_at=user.created_at.isoformat() if isinstance(user.created_at, datetime) else user.created_at
+    )
+
+
+def project_to_response(project: Project) -> ProjectResponse:
+    return ProjectResponse(
+        id=project.id, user_id=project.user_id, name=project.name,
+        description=project.description, prompt=project.prompt, status=project.status,
+        files=project.files, tech_stack=project.tech_stack,
+        deployed_url=project.deployed_url, deployment_id=project.deployment_id,
+        github_repo=project.github_repo, is_public=project.is_public,
+        share_id=project.share_id, view_count=project.view_count,
+        created_at=project.created_at.isoformat() if isinstance(project.created_at, datetime) else project.created_at,
+        updated_at=project.updated_at.isoformat() if isinstance(project.updated_at, datetime) else project.updated_at
     )
