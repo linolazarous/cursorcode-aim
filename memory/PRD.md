@@ -1,73 +1,93 @@
 # CursorCode AI - Product Requirements Document
 
 ## Original Problem Statement
-Build an autonomous AI software engineering platform called "CursorCode AI" that takes natural language prompts to design, build, deploy, and maintain full-stack applications. Powered by xAI's Grok models. Goal: "a world's leading autonomous software that replaces developers."
+Build an autonomous AI software engineering platform called "CursorCode AI" that takes natural language prompts to design, build, deploy, and maintain full-stack applications. Powered by xAI Grok models with multi-agent code generation.
 
 ## Tech Stack
-- **Frontend:** React, Tailwind CSS, Shadcn/UI, Framer Motion, React Router, Monaco Editor
-- **Backend:** FastAPI, MongoDB (Motor), JWT Auth, httpx (xAI API), SSE Streaming, Stripe
-- **AI:** xAI Grok (3 model tiers) with 6-agent multi-agent pipeline
-- **3rd Party:** Stripe, SendGrid, GitHub OAuth, Google OAuth2 (standard)
+- **Frontend:** React, TailwindCSS, Shadcn/UI, Framer Motion
+- **Backend:** FastAPI (modular), MongoDB (Motor), JWT Auth
+- **External APIs:** xAI Grok, Stripe, SendGrid, GitHub OAuth, Google OAuth
 
-## Design System
-- **Theme:** Cybersecurity / deep-tech aesthetic
-- **Background:** Deep navy #0a0e1a, #0d1425, #141f30
-- **Accent:** Bright cyan-blue #00b4ff with glow effects
-- **Typography:** Outfit (headings), Inter (body), JetBrains Mono (code)
-- **Effects:** Glass-morphism, neural particle backgrounds, cyber grid, scan-line animations, pulse glows
+## Core Requirements
+1. User authentication (email/password, GitHub OAuth, Google OAuth, 2FA/TOTP)
+2. AI code generation workspace with multi-agent SSE streaming
+3. Subscription billing (Stripe webhooks)
+4. Project management (CRUD, share, export, snapshots, activity timeline)
+5. Deployment simulation
+6. Admin dashboard
+7. Cybersecurity-themed premium UI
 
-## Completed Features (25+ features, 100% tested across 16 iterations)
-1. User auth (signup, login, JWT, refresh tokens)
-2. GitHub OAuth + Google OAuth2 (standard flow with colored SVG icons)
-3. User/Admin dashboards with project CRUD
-4. Project Templates Gallery (filterable)
-5. Template Preview Mode (interactive mockups)
-6. Pricing page with Stripe checkout (5 tiers)
-7. Settings page (profile, billing, API keys, security)
-8. Demo Video Modal
-9. Email verification flow
-10. Two-Factor Authentication (2FA/TOTP)
-11. Password Reset Flow (email-based)
-12. Premium Landing Page:
-    - Neural particle background (canvas, mouse-interactive)
-    - Rotating hero text cycling app types
-    - Animated counter stats strip (IntersectionObserver)
-    - **Interactive Live Demo** (prompt input, 6 agent simulation, code streaming, file tree, agent log, completion CTA)
-    - Comparison section (Traditional Dev vs CursorCode AI)
-    - Testimonials section (3 cards, star ratings)
-    - Architecture Graph with animated agents
-    - Deploy Terminal animation
-    - Enterprise Security compliance cards
-    - "The future of software engineering starts now" CTA
-13. Credit Meter Component
-14. Security Tab in Settings
-15. Guided Onboarding Wizard (4-step)
-16. Real AI Code Generation with xAI Grok (SSE streaming, 6 agents)
-17. Share Project (public preview links, view counter)
-18. AI Conversation History (persistent per-project)
-19. Prompt Templates Library (8 starters)
-20. Project Export (ZIP download)
-21. Activity Timeline (audit log)
-22. Version Snapshots (save/restore with auto-backup)
-23. Full Stripe Webhook (checkout, invoice, subscription events + idempotency)
-24. Privacy, Terms, Contact pages (real content, real routing)
-25. Production-grade Demo Mode (realistic multi-file AI output for all 6 agents)
+## Architecture (Post-Refactor)
+```
+/app/backend/
+├── server.py              # App init + router includes (75 lines)
+├── core/
+│   ├── config.py          # All env vars and constants
+│   ├── database.py        # MongoDB connection
+│   └── security.py        # JWT, auth helpers, get_current_user
+├── models/
+│   └── schemas.py         # All Pydantic models
+├── routes/
+│   ├── auth.py            # Auth (signup, login, 2FA, OAuth, password reset)
+│   ├── users.py           # User profile, onboarding, GitHub repos
+│   ├── projects.py        # Project CRUD, share, export, snapshots, messages
+│   ├── ai.py              # AI generation + SSE streaming
+│   ├── deployments.py     # Deployment routes
+│   ├── subscriptions.py   # Billing, Stripe webhook
+│   ├── admin.py           # Admin stats/users/usage
+│   ├── templates.py       # Prompt + project templates
+│   └── shared.py          # Public shared project view
+├── services/
+│   ├── ai.py              # AI helpers, streaming, demo generators
+│   ├── email.py           # SendGrid email helpers
+│   └── stripe_service.py  # Stripe products, SUBSCRIPTION_PLANS
+└── tests/                 # Test files
+```
 
-## Key Components
-- `NeuralBackground.js` — Canvas particle network with mouse interaction
-- `AnimatedCounter.js` — IntersectionObserver count-up animation
-- `RotatingText.js` — AnimatePresence cycling hero text
-- `LiveDemo.js` — Full interactive code generation demo (SIMULATED, no backend)
+## What's Been Implemented
+- [x] Email/password auth with JWT + refresh tokens
+- [x] GitHub OAuth
+- [x] Standard Google OAuth2
+- [x] Two-Factor Authentication (TOTP)
+- [x] Password reset flow
+- [x] Multi-agent AI code generation (SSE streaming, xAI Grok)
+- [x] Project CRUD + file management
+- [x] Project sharing via public links
+- [x] Project export as ZIP
+- [x] Version snapshots (create/restore)
+- [x] Activity timeline
+- [x] Conversation history (messages)
+- [x] Prompt templates + project templates
+- [x] Stripe subscription billing + webhook
+- [x] Deployment simulation
+- [x] Admin dashboard (stats, users, usage)
+- [x] Onboarding wizard
+- [x] Legal pages (Privacy, Terms, Contact)
+- [x] Cybersecurity-themed premium UI (NeuralBackground, AnimatedCounter, RotatingText, LiveDemo)
+- [x] **Backend refactoring** (server.py: 2500+ → 75 lines, 16 modules)
 
-## DB Collections
-users, projects, project_messages, project_activities, project_snapshots, deployments, subscriptions, credit_usage, webhook_events, payments
+## Prioritized Backlog
+### P1
+- Implement real file hosting for deployments (S3/GCS)
 
-## Production Environment
-- **Backend:** Render (env vars set)
-- **Frontend:** Vercel (auto-deploys from GitHub)
-- **Database:** MongoDB Atlas (production)
+### P2
+- Enforce email verification flow (restrict unverified users)
 
-## Pending
-- P1: Backend refactoring (server.py is 2500+ lines monolith)
-- P2: Real deployment hosting, email verification enforcement
-- Mocked: Deployment simulation, Contact form email, AI demo mode (until XAI_API_KEY set), LiveDemo (frontend-only simulation)
+### P3/Future
+- Custom prompt template creation/saving
+- Team collaboration features
+- Real-time multiplayer editing
+
+## Mocked Features
+- **LiveDemo** on landing page: Simulated AI generation stream
+- **Deployment system**: Creates records but doesn't host real files
+- **Contact form**: Simulates success without sending email
+- **AI generation**: Returns demo content when XAI_API_KEY not set
+- **Stripe checkout**: Returns demo URL when STRIPE_SECRET_KEY not set
+
+## Test Credentials
+- Email: `test_refactor@example.com` / Password: `Test123456!`
+
+## Testing History
+- iteration_12 through iteration_17: All passed
+- iteration_17: Backend refactoring verification - 42/42 tests passed (100%)
