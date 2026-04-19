@@ -15,6 +15,7 @@ from routes.deployments import router as deployments_router
 from routes.subscriptions import router as subscriptions_router
 from routes.admin import router as admin_router
 from routes.templates import router as templates_router
+from routes.autonomous import router as autonomous_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -36,6 +37,7 @@ api_router.include_router(deployments_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(admin_router)
 api_router.include_router(templates_router)
+api_router.include_router(autonomous_router)
 
 
 # Health & Root
