@@ -6,17 +6,17 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
 ## Tech Stack
 - **Frontend:** React, TailwindCSS, Shadcn/UI, Framer Motion
 - **Backend:** FastAPI (modular), MongoDB (Motor), JWT Auth
-- **Payments:** JengaHQ (Finserve Africa) — replaced Stripe
+- **Payments:** JengaHQ (Finserve Africa)
 - **External APIs:** xAI Grok, JengaHQ, SendGrid, GitHub OAuth, Google OAuth
 
 ## Architecture
 ```
 /app/backend/
-├── server.py              # App init + router includes (68 lines)
+├── server.py              # App init + router includes
 ├── core/
-│   ├── config.py          # All env vars (JengaHQ, xAI, OAuth, SendGrid)
+│   ├── config.py          # All env vars
 │   ├── database.py        # MongoDB connection
-│   └── security.py        # JWT, auth helpers, get_current_user
+│   └── security.py        # JWT, auth helpers
 ├── models/
 │   └── schemas.py         # All Pydantic models
 ├── routes/
@@ -24,77 +24,67 @@ Build an autonomous AI software engineering platform called "CursorCode AI" that
 │   ├── users.py           # User profile, onboarding, GitHub repos
 │   ├── projects.py        # Project CRUD, share, export, snapshots, messages
 │   ├── ai.py              # AI generation + SSE + rate limit + credit enforcement
+│   ├── autonomous.py      # 18 endpoints: guardrails, sandbox, validation, snapshots, context, deps, feedback
 │   ├── deployments.py     # Deployment routes (simulated)
-│   ├── subscriptions.py   # JengaHQ checkout, IPN webhook, cancel, recurring billing, credits
+│   ├── subscriptions.py   # JengaHQ checkout, IPN webhook, cancel, recurring billing
 │   ├── admin.py           # Admin stats/users/usage
 │   ├── templates.py       # Prompt + project templates
 │   └── shared.py          # Public shared project view
 ├── services/
 │   ├── ai.py              # AI helpers, streaming, demo generators
 │   ├── email.py           # SendGrid email helpers
-│   ├── jenga.py           # JengaHQ API client (auth, payment, IPN verification)
-│   └── stripe_service.py  # Billing plans + credit cost helpers (Stripe code removed)
+│   ├── jenga.py           # JengaHQ API client
+│   ├── stripe_service.py  # Billing plans + credit cost helpers (Stripe removed)
+│   ├── guardrails.py      # Lazy code, credential leak, hallucinated lib detection
+│   ├── sandbox.py         # Subprocess code execution wrapper
+│   ├── validation_loop.py # Test gen -> execute -> debug cycle
+│   ├── snapshot_manager.py# Pre-op snapshots, rollback, diff
+│   ├── context_pruning.py # TF-IDF file relevance ranking
+│   ├── dependency_graph.py# Cross-file import mapping
+│   └── feedback_collector.py # User feedback storage + stats
+├── ai_agents.py           # Multi-agent system (Grok)
 ├── ai_rate_limiter.py     # Plan-based rate limiting
-└── ai_*.py                # Existing AI modules (to be wired in Phase 3)
+├── ai_security.py         # Prompt/code security validation
+├── code_executor.py       # Subprocess sandbox (Python/Node.js)
+└── [other ai_*.py]        # Supporting AI modules
 ```
 
-## Subscription Tiers & Credits
-| Tier | Price | Credits/mo | Key Features |
-|------|-------|-----------|--------------|
-| Starter | $0 | 10 | Basic chat/refactor |
-| Standard | $29 | 75 | Full-stack & APIs |
-| Pro | $59 | 150 | Autonomous debugging |
-| Premier | $199 | 600 | Security scans |
-| Ultra | $499 | 2,000 | Private sandboxes |
-
-## Credit Costs per Operation
-chat: 1, refactor: 2, code_generation: 2, architecture: 3, code_review: 2, documentation: 1, simple_query: 1, complex_reasoning: 3, multi_agent_build: 5, security_scan: 3, test_generation: 2, debug: 2, sandbox_execution: 4
+## Autonomous AI Modules (Phase 3 - COMPLETE)
+| Module | Endpoints | Status |
+|--------|-----------|--------|
+| Guardrails | `/validate`, `/validate-project/{id}` | Working |
+| Sandbox | `/execute`, `/run-tests/{id}` | Working |
+| Validation Loop | `/validate-loop` | Working (demo mode) |
+| Snapshot Manager | `/auto`, `/rollback`, `/diff`, list | Working |
+| Context Pruning | `/rank/{id}`, `/prune/{id}` | Working |
+| Dependency Graph | `/deps/{id}`, `/affected` | Working |
+| Feedback Collector | `/feedback`, `/stats`, `/recent` | Working |
 
 ## What's Been Implemented
-- [x] Email/password auth with JWT + refresh tokens
-- [x] GitHub OAuth + Standard Google OAuth2
-- [x] Two-Factor Authentication (TOTP)
-- [x] Password reset flow
-- [x] Multi-agent AI code generation (SSE streaming, xAI Grok)
-- [x] Project CRUD + file management
-- [x] Project sharing, export, snapshots, activity timeline, messages
-- [x] Prompt templates + project templates
-- [x] Onboarding wizard + Legal pages
+- [x] All auth flows (email, GitHub, Google OAuth, 2FA, password reset)
+- [x] Multi-agent AI code generation (SSE streaming)
+- [x] Project CRUD + share + export + snapshots + messages
+- [x] Backend modular refactoring (server.py 2500+ -> 70 lines)
+- [x] JengaHQ payment integration (Stripe fully replaced)
+- [x] Credit-based rate limiting on all AI routes
+- [x] Recurring billing engine
+- [x] **7 autonomous AI modules** (guardrails, sandbox, validation_loop, snapshot_manager, context_pruning, dependency_graph, feedback_collector)
 - [x] Cybersecurity-themed premium UI
-- [x] **Backend modular refactoring** (server.py: 2500+ → 68 lines)
-- [x] **JengaHQ payment integration** (Stripe fully replaced)
-- [x] **Credit-based rate limiting** on all AI routes
-- [x] **Recurring billing engine** (JengaHQ tokenization)
-- [x] **`/api/user/credits`** endpoint
-- [x] **`/api/ai/execute`** generic AI operation endpoint
-- [x] **`/api/ai/credit-costs`** endpoint
 
 ## Prioritized Backlog
-
-### P0 — In Progress
-- **Phase 3: Wire existing AI modules** to routes (ai_sandbox, ai_guardrails, ai_validation_loop, ai_snapshot_manager, ai_context_pruning, ai_dependency_graph, ai_feedback_collector)
-
 ### P1
 - Implement real file hosting for deployments (GCS integration)
-
 ### P2
 - Enforce email verification flow
-
 ### P3/Future
 - Custom prompt template creation/saving
 - Team collaboration features
-- Real-time multiplayer editing
 - GCP deployment configuration (Cloud Run, Cloudflare DNS)
-
-## Mocked Features
-- **JengaHQ:** Demo mode when JENGA_API_KEY not set (auto-activates subscriptions)
-- **AI generation:** Demo content when XAI_API_KEY not set
-- **Deployment system:** Simulated (no real file hosting)
-- **Contact form:** Simulated success
-
-## Test Credentials
-- Email: `test_refactor@example.com` / Password: `Test123456!`
 
 ## Testing History
 - iteration_17: Backend refactoring — 42/42 passed
-- iteration_18: JengaHQ migration + credit system — 31/31 passed
+- iteration_18: JengaHQ + credit system — 31/31 passed
+- iteration_19: Autonomous AI modules — 53/53 passed
+
+## Test Credentials
+- Email: `test_refactor@example.com` / Password: `Test123456!`
