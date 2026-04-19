@@ -105,7 +105,11 @@ export default function DashboardPage() {
       toast.success("Project created!");
       navigate(`/project/${response.data.id}`);
     } catch (error) {
-      toast.error("Failed to create project");
+      if (error.response?.status === 403) {
+        toast.error("Please verify your email address before creating projects.");
+      } else {
+        toast.error("Failed to create project");
+      }
     } finally {
       setCreating(false);
     }

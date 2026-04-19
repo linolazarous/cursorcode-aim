@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
 
 from core.database import db
-from core.security import get_current_user
+from core.security import get_current_user, require_verified_email
 from models.schemas import User
 from services.stripe_service import check_credits
 from ai_rate_limiter import check_rate_limit
@@ -63,7 +63,7 @@ async def validate_project_files(project_id: str, user: User = Depends(get_curre
 # ==================== SANDBOX ====================
 
 @router.post("/sandbox/execute")
-async def execute_in_sandbox(request: Request, user: User = Depends(get_current_user)):
+async def execute_in_sandbox(request: Request, user: User = Depends(require_verified_email)):
     """Execute code in a subprocess sandbox."""
     cost = _enforce(user, "sandbox_execution")
     data = await request.json()
@@ -79,7 +79,7 @@ async def execute_in_sandbox(request: Request, user: User = Depends(get_current_
 
 
 @router.post("/sandbox/run-tests/{project_id}")
-async def run_project_tests(project_id: str, user: User = Depends(get_current_user)):
+async def run_project_tests(project_id: str, user: User = Depends(require_verified_email)):
     """Run test files in a project via sandbox."""
     cost = _enforce(user, "sandbox_execution")
     project = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
@@ -95,7 +95,7 @@ async def run_project_tests(project_id: str, user: User = Depends(get_current_us
 # ==================== VALIDATION LOOP ====================
 
 @router.post("/validate-loop")
-async def run_validation(request: Request, user: User = Depends(get_current_user)):
+async def run_validation(request: Request, user: User = Depends(require_verified_email)):
     """Run the test-gen -> execute -> debug validation loop on code."""
     cost = _enforce(user, "debug")
     data = await request.json()

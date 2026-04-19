@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from core.config import FRONTEND_URL
 from core.database import db
-from core.security import get_current_user, project_to_response
+from core.security import get_current_user, project_to_response, require_verified_email
 from models.schemas import User, Project, ProjectCreate, ProjectResponse
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ async def log_activity(project_id: str, user_id: str, action: str, detail: str =
 
 
 @router.post("", response_model=ProjectResponse)
-async def create_project(project_data: ProjectCreate, user: User = Depends(get_current_user)):
+async def create_project(project_data: ProjectCreate, user: User = Depends(require_verified_email)):
     project = Project(user_id=user.id, name=project_data.name,
                       description=project_data.description or "", prompt=project_data.prompt or "")
     doc = project.model_dump()

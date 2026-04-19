@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from core.config import DEFAULT_XAI_MODEL, FAST_REASONING_MODEL, FAST_NON_REASONING_MODEL
 from core.database import db
-from core.security import get_current_user, get_user_from_token_param
+from core.security import get_current_user, get_user_from_token_param, require_verified_email
 from models.schemas import User, AIGenerateRequest, AIGenerateResponse, CreditUsage
 from services.ai import (
     select_model, calculate_credits, call_xai_api, parse_files_from_response,
@@ -39,7 +39,7 @@ def _enforce_rate_and_credits(user: User, operation: str):
 
 
 @router.post("/generate", response_model=AIGenerateResponse)
-async def generate_code(request: AIGenerateRequest, user: User = Depends(get_current_user)):
+async def generate_code(request: AIGenerateRequest, user: User = Depends(require_verified_email)):
     credits_needed = _enforce_rate_and_credits(user, request.task_type)
     model = request.model or select_model(request.task_type)
     project_doc = await db.projects.find_one({"id": request.project_id, "user_id": user.id}, {"_id": 0})
@@ -182,7 +182,7 @@ async def get_credit_costs():
 
 
 @router.post("/execute")
-async def execute_ai_operation(request: Request, user: User = Depends(get_current_user)):
+async def execute_ai_operation(request: Request, user: User = Depends(require_verified_email)):
     """Generic AI execution endpoint with credit check + rate limiting."""
     data = await request.json()
     operation = data.get("operation", "code_generation")

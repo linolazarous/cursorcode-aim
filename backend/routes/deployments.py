@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends
 
 from core.database import db
-from core.security import get_current_user
+from core.security import get_current_user, require_verified_email
 from models.schemas import User, Project, Deployment
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ router = APIRouter(tags=["deployments"])
 
 
 @router.post("/deploy/{project_id}")
-async def deploy_project(project_id: str, user: User = Depends(get_current_user)):
+async def deploy_project(project_id: str, user: User = Depends(require_verified_email)):
     project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
     if not project_doc:
         raise HTTPException(status_code=404, detail="Project not found")

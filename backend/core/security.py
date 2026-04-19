@@ -60,6 +60,16 @@ async def get_admin_user(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+async def require_verified_email(user: User = Depends(get_current_user)) -> User:
+    """Dependency that enforces email verification for protected operations."""
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Email verification required. Please check your inbox and verify your email address."
+        )
+    return user
+
+
 async def get_user_from_token_param(request: Request) -> User:
     token = request.query_params.get("token")
     if not token:
