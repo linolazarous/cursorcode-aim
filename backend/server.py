@@ -65,7 +65,14 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("CursorCode AI v2.1 started (JengaHQ billing)")
+    from services.storage import init_storage, is_storage_available
+    if is_storage_available():
+        try:
+            init_storage()
+            logger.info("Object storage initialized")
+        except Exception as e:
+            logger.error(f"Storage init failed (deployments will use simulation mode): {e}")
+    logger.info("CursorCode AI v2.2 started (JengaHQ billing, real file hosting)")
 
 
 @app.on_event("shutdown")

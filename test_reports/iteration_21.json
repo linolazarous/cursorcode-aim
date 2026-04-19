@@ -1,0 +1,81 @@
+{
+  "summary": "Iteration 21: Real file hosting via Emergent Object Storage testing complete. All 18 tests passed. Deploy uploads files to object storage, preview endpoints serve files with correct MIME types (text/html, text/css, application/javascript). Deployment CRUD operations working. All regression tests passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "POST /api/deploy/{project_id} - uploads files to object storage, returns real preview URL with files_uploaded count",
+    "POST /api/deploy/{project_id} - generates index.html automatically if not present in project files",
+    "POST /api/deploy/{project_id} - requires verified email (403 for unverified users)",
+    "GET /api/preview/{deployment_id}/index.html - serves HTML with text/html content type",
+    "GET /api/preview/{deployment_id}/style.css - serves CSS with text/css content type",
+    "GET /api/preview/{deployment_id}/app.js - serves JS with application/javascript content type",
+    "GET /api/preview/{deployment_id}/nonexistent.txt - returns 404 for nonexistent files",
+    "GET /api/preview/invalid-id/index.html - returns 404 for invalid deployment",
+    "GET /api/deployments - lists user deployments",
+    "GET /api/deployments/{id} - returns deployment details with status=deployed",
+    "DELETE /api/deployments/{id} - deletes deployment and resets project status to draft",
+    "Regression: GET /api/health - health check returns healthy status",
+    "Regression: POST /api/auth/login - user login returns JWT tokens",
+    "Regression: POST /api/projects - works for verified user",
+    "Regression: PUT /api/projects/{id}/files - updates project files",
+    "Regression: GET /api/user/credits - returns user credits",
+    "Regression: POST /api/payments/create-order - works (demo mode)",
+    "Regression: POST /api/autonomous/guardrails/validate - validates code"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_deployment_storage.py",
+    "/app/test_reports/pytest/pytest_deployment_storage.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Object storage integration working correctly - files uploaded to cursorcode/deployments/{deployment_id}/ paths",
+    "Preview endpoint is public (no auth required) - correct for static file serving",
+    "MIME types correctly mapped: html->text/html, css->text/css, js->application/javascript",
+    "Deploy logs show upload progress with file counts",
+    "Generated index.html has cybersecurity-themed dark design with file links",
+    "Deployment delete correctly resets project status to 'draft'",
+    "PUT /api/projects/{id}/files expects files dict directly in body (not wrapped in {files: ...})"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_deployment_storage.py"
+  ],
+  "success_rate": {
+    "backend": "100% (18/18 tests passed)",
+    "frontend": "N/A (backend-only testing requested)"
+  },
+  "test_credentials": {
+    "verified_user": {
+      "email": "test_refactor@example.com",
+      "password": "Test123456!",
+      "email_verified": true
+    }
+  },
+  "seed_data_creation": "Created test projects with TEST_ prefix for each test class, cleaned up after tests",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 21 verified real file hosting via Emergent Object Storage. Deploy uploads files to storage, preview serves them with correct MIME types. MOCKED: JengaHQ payment (demo mode), AI generation (demo mode). Object storage is REAL (not mocked) - EMERGENT_LLM_KEY is set. PUT /api/projects/{id}/files expects files dict directly in body, not wrapped.",
+  "mocked_features": {
+    "JengaHQ payment": "Demo mode - auto-activates subscriptions",
+    "AI generation": "Demo mode when XAI_API_KEY not set"
+  },
+  "deployment_storage_verification": {
+    "storage_type": "Emergent Object Storage (REAL, not mocked)",
+    "storage_path_pattern": "cursorcode/deployments/{deployment_id}/{filename}",
+    "preview_endpoint": "GET /api/preview/{deployment_id}/{filepath}",
+    "preview_auth": "Public (no auth required)",
+    "mime_types_verified": {
+      "html": "text/html",
+      "css": "text/css",
+      "js": "application/javascript"
+    },
+    "auto_index_generation": "Yes - generates index.html with dark theme if not present",
+    "deploy_response_fields": ["deployment_id", "deployed_url", "subdomain", "status", "files_uploaded", "logs"]
+  }
+}

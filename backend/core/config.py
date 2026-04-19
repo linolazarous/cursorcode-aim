@@ -46,5 +46,10 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 # Frontend URL
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
+# Emergent Object Storage
+EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+APP_NAME = "cursorcode"
+
 # CORS
 CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
