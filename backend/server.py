@@ -2,11 +2,9 @@ from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
 import logging
-import stripe
 
 from core.config import CORS_ORIGINS
 from core.database import client
-from services.stripe_service import ensure_stripe_products
 
 from routes.auth import router as auth_router
 from routes.users import router as users_router
@@ -23,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # Create the main app
-app = FastAPI(title="CursorCode AI API", version="2.0.0")
+app = FastAPI(title="CursorCode AI API", version="2.1.0")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -43,7 +41,7 @@ api_router.include_router(templates_router)
 # Health & Root
 @api_router.get("/")
 async def root():
-    return {"message": "CursorCode AI API", "version": "2.0.0", "status": "running"}
+    return {"message": "CursorCode AI API", "version": "2.1.0", "status": "running"}
 
 
 @api_router.get("/health")
@@ -65,9 +63,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    if stripe.api_key:
-        await ensure_stripe_products()
-    logger.info("CursorCode AI v2.0 started")
+    logger.info("CursorCode AI v2.1 started (JengaHQ billing)")
 
 
 @app.on_event("shutdown")

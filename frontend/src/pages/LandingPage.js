@@ -426,7 +426,7 @@ export default function LandingPage() {
                       "Build a SaaS dashboard with user auth,
                     </div>
                     <div className="text-emerald">
-                      Stripe payments, and real-time analytics"
+                      JengaHQ payments, and real-time analytics"
                     </div>
                     <div className="mt-4 text-zinc-500">// CursorCode AI generates...</div>
                     <div className="mt-2 text-electric">
@@ -438,7 +438,7 @@ export default function LandingPage() {
                       auth: <span className="text-emerald">'JWT + OAuth'</span>,
                     </div>
                     <div className="text-white/80 pl-4">
-                      payments: <span className="text-emerald">'Stripe'</span>,
+                      payments: <span className="text-emerald">'JengaHQ'</span>,
                     </div>
                     <div className="text-white/80 pl-4">
                       analytics: <span className="text-emerald">'real-time'</span>,
@@ -1088,7 +1088,7 @@ function DeployTerminal() {
     { text: "Generating system architecture...", delay: 800 },
     { text: "Creating React frontend with TailwindCSS...", delay: 1600 },
     { text: "Building FastAPI backend with auth...", delay: 2400 },
-    { text: "Configuring Stripe billing integration...", delay: 3200 },
+    { text: "Configuring JengaHQ billing integration...", delay: 3200 },
     { text: "Running security audit...", delay: 4000 },
     { text: "Executing test suite... 47/47 passed", delay: 4800 },
     { text: "Building Docker container...", delay: 5600 },

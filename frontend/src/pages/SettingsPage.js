@@ -119,10 +119,10 @@ export default function SettingsPage() {
   // ======================================================
   const handleUpgrade = async (plan) => {
     try {
-      const res = await api.post("/subscriptions/create-checkout", { plan });
+      const res = await api.post("/payments/create-order", { plan });
 
       if (res.data.demo) {
-        toast.info("Demo mode - configure Stripe for real payments");
+        toast.info("Demo mode — JengaHQ keys not configured. Subscription activated!");
         return;
       }
 

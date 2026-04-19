@@ -47,7 +47,7 @@ export default function TermsPage() {
             <section>
               <h2 className="text-xl font-semibold text-white mb-3">5. Subscription and Billing</h2>
               <ul className="list-disc pl-5 space-y-2">
-                <li>Paid plans are billed monthly via Stripe</li>
+                <li>Paid plans are billed monthly via JengaHQ</li>
                 <li>Credits reset at the beginning of each billing cycle</li>
                 <li>Unused credits do not roll over to the next billing period</li>
                 <li>You may upgrade, downgrade, or cancel your subscription at any time</li>

@@ -13,6 +13,8 @@ from services.ai import (
     select_model, calculate_credits, call_xai_api, parse_files_from_response,
     stream_xai_api, AGENT_CONFIGS
 )
+from services.stripe_service import check_credits, get_credit_cost, CREDIT_COSTS
+from ai_rate_limiter import check_rate_limit
 from routes.projects import log_activity
 
 logger = logging.getLogger(__name__)
@@ -20,13 +22,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
+def _enforce_rate_and_credits(user: User, operation: str):
+    """Check rate limit + credit balance. Raises HTTPException if blocked."""
+    if not check_rate_limit(user.id, user.plan):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded for {user.plan} plan. Try again in a minute."
+        )
+    has_enough, cost, remaining = check_credits(user.credits, user.credits_used, operation)
+    if not has_enough:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient credits. Operation requires {cost} credits, you have {remaining} remaining."
+        )
+    return cost
+
+
 @router.post("/generate", response_model=AIGenerateResponse)
 async def generate_code(request: AIGenerateRequest, user: User = Depends(get_current_user)):
+    credits_needed = _enforce_rate_and_credits(user, request.task_type)
     model = request.model or select_model(request.task_type)
-    credits_needed = calculate_credits(model, request.task_type)
-    remaining_credits = user.credits - user.credits_used
-    if remaining_credits < credits_needed:
-        raise HTTPException(status_code=402, detail="Insufficient credits")
     project_doc = await db.projects.find_one({"id": request.project_id, "user_id": user.id}, {"_id": 0})
     if not project_doc:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -86,11 +101,8 @@ async def generate_stream(
     model: str = None,
 ):
     user = await get_user_from_token_param(request)
+    credits_needed = _enforce_rate_and_credits(user, "multi_agent_build")
     model = model or FAST_REASONING_MODEL
-    credits_needed = calculate_credits(model, "code_generation")
-    remaining = user.credits - user.credits_used
-    if remaining < credits_needed:
-        raise HTTPException(status_code=402, detail="Insufficient credits")
 
     project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
     if not project_doc:
@@ -161,3 +173,62 @@ async def generate_stream(
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     })
+
+
+@router.get("/credit-costs")
+async def get_credit_costs():
+    """Return credit costs per AI operation type."""
+    return {"costs": CREDIT_COSTS}
+
+
+@router.post("/execute")
+async def execute_ai_operation(request: Request, user: User = Depends(get_current_user)):
+    """Generic AI execution endpoint with credit check + rate limiting."""
+    data = await request.json()
+    operation = data.get("operation", "code_generation")
+    prompt = data.get("prompt", "")
+    project_id = data.get("project_id")
+
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+
+    credits_needed = _enforce_rate_and_credits(user, operation)
+    model = select_model(operation)
+
+    system_message = f"You are CursorCode AI. Perform this operation: {operation}. Be thorough and production-ready."
+
+    try:
+        response = await call_xai_api(prompt, model, system_message)
+    except Exception as e:
+        logger.error(f"AI execute failed: {e}")
+        raise HTTPException(status_code=500, detail="AI operation failed")
+
+    parsed_files = parse_files_from_response(response)
+
+    # Update project files if project_id provided
+    if project_id:
+        project_doc = await db.projects.find_one({"id": project_id, "user_id": user.id}, {"_id": 0})
+        if project_doc and parsed_files:
+            existing = project_doc.get("files", {})
+            existing.update(parsed_files)
+            await db.projects.update_one(
+                {"id": project_id},
+                {"$set": {"files": existing, "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+
+    # Deduct credits
+    await db.users.update_one({"id": user.id}, {"$inc": {"credits_used": credits_needed}})
+    usage = CreditUsage(user_id=user.id, project_id=project_id, model=model,
+                        credits_used=credits_needed, task_type=operation)
+    usage_doc = usage.model_dump()
+    usage_doc['created_at'] = usage_doc['created_at'].isoformat()
+    await db.credit_usage.insert_one(usage_doc)
+
+    return {
+        "operation": operation,
+        "model_used": model,
+        "credits_used": credits_needed,
+        "credits_remaining": user.credits - user.credits_used - credits_needed,
+        "response": response,
+        "files": parsed_files,
+    }

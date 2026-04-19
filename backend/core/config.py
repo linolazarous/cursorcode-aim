@@ -19,8 +19,13 @@ DEFAULT_XAI_MODEL = os.environ.get('DEFAULT_XAI_MODEL', 'grok-4-latest')
 FAST_REASONING_MODEL = os.environ.get('FAST_REASONING_MODEL', 'grok-4-1-fast-reasoning')
 FAST_NON_REASONING_MODEL = os.environ.get('FAST_NON_REASONING_MODEL', 'grok-4-1-fast-non-reasoning')
 
-# Stripe
-STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+# JengaHQ Payments
+JENGA_API_KEY = os.environ.get('JENGA_API_KEY', '')
+JENGA_MERCHANT_CODE = os.environ.get('JENGA_MERCHANT_CODE', '')
+JENGA_CONSUMER_SECRET = os.environ.get('JENGA_CONSUMER_SECRET', '')
+JENGA_WEBHOOK_SECRET = os.environ.get('JENGA_WEBHOOK_SECRET', '')
+JENGA_BASE_URL = os.environ.get('JENGA_BASE_URL', 'https://uat.finserve.africa')
+JENGA_CURRENCY = os.environ.get('JENGA_CURRENCY', 'USD')
 
 # SendGrid
 SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')

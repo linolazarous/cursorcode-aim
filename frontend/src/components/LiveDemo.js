@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 
 const EXAMPLE_PROMPTS = [
-  "Build a project management app with Kanban boards, team chat, and Stripe billing",
+  "Build a project management app with Kanban boards, team chat, and JengaHQ billing",
   "Create a real-time crypto portfolio tracker with price alerts and chart analytics",
   "Build a healthcare appointment scheduler with patient records and video consultations",
 ];
@@ -94,26 +94,24 @@ async def create_project(data: Project, user=Depends(get_current_user)):
     data.owner_id = user.id
     result = await db.projects.insert_one(data.dict())
     return {"id": str(result.inserted_id)}`,
-  "server/routes/billing.py": `import stripe
+  "server/routes/billing.py": `import httpx
 from fastapi import APIRouter, Request
-from config import STRIPE_SECRET_KEY
+from config import JENGA_API_KEY, JENGA_MERCHANT_CODE
 
-stripe.api_key = STRIPE_SECRET_KEY
 router = APIRouter(prefix="/api/billing")
 
 @router.post("/checkout")
 async def create_checkout(request: Request):
     data = await request.json()
-    session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        line_items=[{
-            "price": data["price_id"],
-            "quantity": 1,
-        }],
-        mode="subscription",
-        success_url=data["success_url"],
-    )
-    return {"url": session.url}`,
+    # JengaHQ payment link
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://api.finserve.africa/api-checkout/api/v1/create/payment-link",
+            json={"amount": data["amount"], "currency": "USD",
+                  "reference": data["ref"], "redirectUrl": data["success_url"]},
+            headers={"Authorization": f"Bearer {await get_token()}"}
+        )
+    return {"url": resp.json().get("paymentLink")}`,
   "server/middleware/security.py": `from fastapi import Request, HTTPException
 from jose import jwt, JWTError
 import rate_limiter
@@ -175,7 +173,7 @@ const AGENT_MESSAGES = [
   { agent: "architect", message: "Database schema: users, projects, boards, tasks, messages, subscriptions" },
   { agent: "frontend", message: "Scaffolding React app with TypeScript, Tailwind CSS, and React Router" },
   { agent: "frontend", message: "Building Dashboard, KanbanBoard, TeamChat, and Settings pages" },
-  { agent: "backend", message: "Creating FastAPI server with project CRUD and Stripe billing routes" },
+  { agent: "backend", message: "Creating FastAPI server with project CRUD and JengaHQ billing routes" },
   { agent: "backend", message: "Setting up WebSocket server for real-time team chat" },
   { agent: "security", message: "Implementing JWT auth with refresh tokens and rate limiting middleware" },
   { agent: "security", message: "Adding CORS, input validation, SQL injection prevention, and XSS guards" },

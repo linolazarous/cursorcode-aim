@@ -24,8 +24,8 @@ class User(BaseModel):
     plan: str = "starter"
     credits: int = 10
     credits_used: int = 0
-    stripe_customer_id: Optional[str] = None
-    stripe_subscription_id: Optional[str] = None
+    jenga_customer_ref: Optional[str] = None
+    subscription_id: Optional[str] = None
     is_admin: bool = False
     email_verified: bool = False
     verification_token: Optional[str] = None
@@ -177,8 +177,6 @@ class SubscriptionPlan(BaseModel):
     price: int
     credits: int
     features: List[str]
-    stripe_price_id: Optional[str] = None
-    stripe_product_id: Optional[str] = None
 
 
 class UserUpdateRequest(BaseModel):

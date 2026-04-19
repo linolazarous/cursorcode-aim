@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from core.database import db
 from core.security import get_admin_user
 from models.schemas import User
-from services.stripe_service import SUBSCRIPTION_PLANS
+from services.stripe_service import SUBSCRIPTION_PLANS  # billing plans (Stripe removed, JengaHQ active)
 
 logger = logging.getLogger(__name__)
 

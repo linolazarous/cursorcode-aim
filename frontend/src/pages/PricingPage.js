@@ -116,12 +116,12 @@ export default function PricingPage() {
     setLoadingPlan(plan.id);
 
     try {
-      const res = await api.post("/subscriptions/create-checkout", {
+      const res = await api.post("/payments/create-order", {
         plan: plan.id,
       });
 
       if (res?.data?.demo) {
-        toast.info("Demo mode enabled — Stripe keys not configured");
+        toast.info("Demo mode — JengaHQ keys not configured. Subscription activated!");
         setLoadingPlan(null);
         return;
       }

@@ -20,7 +20,7 @@ export default function PrivacyPage() {
           <div className="prose prose-invert prose-zinc max-w-none space-y-8 text-zinc-300 text-sm leading-relaxed">
             <section>
               <h2 className="text-xl font-semibold text-white mb-3">1. Information We Collect</h2>
-              <p>When you create an account, we collect your name, email address, and payment information (processed securely by Stripe). When you use our platform, we collect project data, AI-generated code, usage analytics, and technical logs.</p>
+              <p>When you create an account, we collect your name, email address, and payment information (processed securely by JengaHQ). When you use our platform, we collect project data, AI-generated code, usage analytics, and technical logs.</p>
             </section>
 
             <section>
@@ -48,7 +48,7 @@ export default function PrivacyPage() {
               <h2 className="text-xl font-semibold text-white mb-3">5. Third-Party Services</h2>
               <p>We use the following third-party services that may process your data:</p>
               <ul className="list-disc pl-5 space-y-2">
-                <li><strong className="text-white">Stripe</strong> &mdash; Payment processing (PCI DSS Level 1 compliant)</li>
+                <li><strong className="text-white">JengaHQ</strong> &mdash; Payment processing (PCI DSS compliant, Finserve Africa)</li>
                 <li><strong className="text-white">xAI</strong> &mdash; AI code generation (prompts processed per their privacy policy)</li>
                 <li><strong className="text-white">SendGrid</strong> &mdash; Transactional emails</li>
                 <li><strong className="text-white">GitHub</strong> &mdash; OAuth authentication (optional)</li>
